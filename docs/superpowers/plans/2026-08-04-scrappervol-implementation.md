@@ -1010,7 +1010,9 @@ def plan_queries(
     `rotation` la ferait bondir de `nb_tranches * max_queries` entre deux visites — un pas qui
     retombe sur lui-même dès que `len(plan)` divise ce produit, et fige alors la fenêtre pour
     toujours. Avec les valeurs par défaut (6 tranches, `max_queries=6`) et 2 origines x 3
-    destinations, la moitié des mois ne serait jamais explorée, sans qu'aucun compteur ni
+    destinations, la fenêtre resterait collée sur la même moitié du plan de chaque tranche :
+    comme le produit cartésien fait varier l'origine le plus lentement, une origine sur deux
+    ne serait jamais interrogée, pour aucun mois de l'horizon, sans qu'aucun compteur ni
     aucune erreur ne le signale. Pour `FIXED` et `WINDOW`, `nb_tranches` vaut 1 et ce compteur
     de passages coïncide avec `rotation`.
     """
