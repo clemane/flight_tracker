@@ -104,6 +104,42 @@ def test_to_offers_prend_la_date_de_depart_du_premier_segment(donnees_reelles, r
     assert offres[0].depart_date == date(an, mois, jour)
 
 
+def test_to_offers_garde_la_date_du_segment_quand_elle_differe_de_la_demande(requete):
+    """Le cas qui distingue vraiment les deux sources de date.
+
+    Dans la fixture réelle, Google renvoie le vol à la date demandée : les deux branches donnent
+    alors le même résultat et le test précédent passe même si l'implémentation ignore la réponse.
+    Ici la réponse s'écarte de la demande, ce qui est le cas qui compte — un vol décalé enregistré
+    sous la date demandée fabriquerait un historique comparant deux vols différents sous la même
+    empreinte.
+    """
+    assert requete.depart_date != date(2026, 11, 5), "la fixture doit différer de la date forcée"
+    brut = [
+        {
+            "type": "AC",
+            "price": 700,
+            "airlines": ["Air Canada"],
+            "flights": [_segment(2026, 11, 5, 415)],
+        }
+    ]
+
+    (offre,) = to_offers(brut, requete)
+
+    assert offre.depart_date == date(2026, 11, 5)
+
+
+def test_to_offers_refuse_un_booleen_en_guise_de_prix(requete):
+    """En Python, True est un int qui vaut 1 : sans garde explicite, il passerait pour un prix.
+
+    Une offre à 1 CAD serait ensuite écartée par le plancher de crédibilité, mais elle aurait
+    d'abord pollué l'historique des plus bas du jour — la médiane sert justement à survivre à ça,
+    autant ne pas la mettre à l'épreuve pour rien.
+    """
+    brut = [{"type": "AC", "price": True, "airlines": ["Air Canada"], "flights": [_SEGMENT]}]
+
+    assert to_offers(brut, requete) == []
+
+
 def test_to_offers_se_rabat_sur_la_date_demandee_si_la_reponse_nen_porte_pas(requete):
     """Une date illisible ne doit pas faire disparaître l'offre : on retombe sur la requête."""
     segment = _segment(2026, 11, 2, 415)
