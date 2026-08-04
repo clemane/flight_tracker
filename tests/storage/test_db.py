@@ -1,10 +1,18 @@
 """Garde-fous sur `session_scope`.
 
-Cette fonction est le dernier rempart entre une erreur au milieu d'un scan et un
-historique de prix à moitié écrit. Une transaction avortée qui laisserait ses lignes
-derrière elle ne lèverait aucune erreur et ne remplirait aucun journal : elle
-fausserait seulement, et pour toujours, la base de comparaison sur laquelle repose la
-détection d'aubaines. D'où ces tests, que le brief de la tâche 4 ne demandait pas.
+Une transaction avortée qui laisserait ses lignes derrière elle ne lèverait aucune
+erreur et ne remplirait aucun journal : elle fausserait seulement, et pour toujours, la
+base de comparaison sur laquelle repose la détection d'aubaines. D'où ces tests, que le
+brief de la tâche 4 ne demandait pas.
+
+Portée réelle, à ne pas surestimer : `session_scope` n'annule que ce qui n'a pas encore
+été committé. Or chaque fonction de `scrappervol.storage.repo` committe elle-même. Un
+scan qui enchaîne `record_observations` puis `upsert_daily_low` dans un même
+`session_scope` n'est donc PAS atomique : si l'erreur survient entre les deux, les
+observations restent en base et le plus bas du jour reste périmé, durablement et en
+silence. Vérifié par mutation à la tâche 5. Ce point doit être tranché explicitement à
+la tâche 15 — soit en retirant les commits de `repo.py`, soit en concevant le scan comme
+reprenable plutôt que tout-ou-rien. Ne pas se fier à ces tests pour croire l'inverse.
 """
 
 import pytest

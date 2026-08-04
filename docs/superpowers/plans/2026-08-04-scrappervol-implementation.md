@@ -1736,6 +1736,62 @@ def test_exception_already_sent_ne_voit_que_les_alertes_dexception(session):
 
     assert repo.exception_already_sent(session, trajet.id, "abc") is True
     assert repo.exception_already_sent(session, trajet.id, "autre") is False
+
+
+def test_upsert_daily_low_prix_egal_ne_bouge_rien(session):
+    """Un prix égal n'est ni une création, ni un abaissement : `None` doit revenir, et la
+    ligne existante (observation_id, provider) doit rester intacte. Un garde-fou avec `<`
+    au lieu de `<=` laisserait passer ce cas silencieusement : même prix, mais la ligne
+    serait réécrite et une valeur non-None reviendrait, ce qui romprait le contrat
+    « retourne la ligne seulement si elle a été créée ou abaissée » sans jamais faire
+    dériver le prix vers le haut — donc sans qu'aucun autre test ne le remarque.
+    """
+    trajet = _trajet(session)
+    premiere = repo.record_observations(session, trajet.id, [_offre(480)], MAINTENANT)[0]
+    repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, premiere)
+    egale = repo.record_observations(
+        session, trajet.id, [_offre(480, airline="Air France")], MAINTENANT
+    )[0]
+
+    resultat = repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, egale)
+
+    assert resultat is None
+    ligne = repo.daily_low_for(session, trajet.id, AUJOURDHUI)
+    assert ligne.price_cad == 480
+    assert ligne.observation_id == premiere.id
+    assert ligne.provider == "google_flights"
+
+
+def test_daily_low_history_est_vide_si_seul_le_jour_courant_existe(session):
+    """Preuve ciblée et directe du point 2 : si le seul `DailyLow` connu est celui du jour
+    courant, l'historique doit être vide. Un `<=` au lieu d'un `<` sur `day` ferait
+    entrer le prix du jour dans sa propre médiane — l'aubaine la plus grosse serait celle
+    qui paraîtrait le moins anormale.
+    """
+    trajet = _trajet(session)
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=100, provider="google_flights")
+    )
+    session.commit()
+
+    assert repo.daily_low_history(session, trajet.id, AUJOURDHUI, window_days=90) == []
+
+
+def test_exception_already_sent_est_borne_au_trajet(session):
+    """Preuve ciblée du point 4 : deux trajets peuvent partager un `offer_hash` (même
+    itinéraire suivi par deux règles différentes, par exemple). Une alerte d'exception
+    envoyée pour le trajet A ne doit jamais éteindre l'alerte du trajet B — sinon une
+    aubaine réelle sur B ne serait jamais signalée.
+    """
+    trajet_a = _trajet(session)
+    trajet_b = _trajet(session)
+    repo.record_alert(
+        session, trajet_a.id, 1, AlertKind.EXCEPTION, {"offer_hash": "partage"}, MAINTENANT
+    )
+
+    assert repo.exception_already_sent(session, trajet_a.id, "partage") is True
+    assert repo.exception_already_sent(session, trajet_b.id, "partage") is False
+
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier l'échec**
