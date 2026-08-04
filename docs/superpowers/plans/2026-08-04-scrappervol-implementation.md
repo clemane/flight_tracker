@@ -2722,6 +2722,7 @@ def test_le_repos_double_a_chaque_echec_supplementaire():
     assert backoff_until(4, MAINTENANT) == MAINTENANT + timedelta(hours=2)
     assert backoff_until(5, MAINTENANT) == MAINTENANT + timedelta(hours=4)
     assert backoff_until(6, MAINTENANT) == MAINTENANT + timedelta(hours=8)
+    assert backoff_until(7, MAINTENANT) == MAINTENANT + timedelta(hours=16)
 
 
 def test_le_repos_plafonne_a_vingt_quatre_heures():
@@ -2744,6 +2745,21 @@ def test_une_source_dont_le_repos_est_echu_redevient_active():
     sante = ProviderHealth(provider="transat", disabled_until=MAINTENANT - timedelta(minutes=1))
 
     assert is_disabled(sante, MAINTENANT) is False
+
+
+def test_une_source_dont_le_repos_expire_a_l_instant_pile_redevient_active():
+    """Frontière exacte de disabled_until == now : le repos doit déjà être terminé.
+
+    Un repos qui s'achève à cet instant précis est un repos terminé, pas un repos en
+    cours. Faire attendre une minute de plus une source qui a atteint son terme ne
+    protège rien de plus : ça retarde seulement la détection de son retour, et un
+    `>` au lieu d'un `>=` dans is_disabled produirait ce délai injustifié sans qu'aucun
+    test à grande marge (+1 h / -1 min) ne le révèle.
+    """
+    sante = ProviderHealth(provider="transat", disabled_until=MAINTENANT)
+
+    assert is_disabled(sante, MAINTENANT) is False
+
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier l'échec**
@@ -3107,6 +3123,43 @@ def test_une_pause_est_observee_entre_les_requetes(session, reglages, fausse_sou
     run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
 
     assert len(appels) == len(source.appels)
+
+
+def test_desactiver_ses_trajets_ne_condamne_pas_les_sources(
+    session, reglages, fausse_source, sans_pause
+):
+    """Une source qu'on n'interroge pas ne peut pas échouer.
+
+    Sans la garde sur `queries_run`, le passage qui suit la désactivation conclut « aucune offre
+    alors que le passage précédent en produisait », incrémente le compteur d'échecs et pose un
+    repos qui double jusqu'à 24 h. Les sources dorment alors au moment précis où l'utilisateur
+    réactive un trajet, et la page de santé annonce trois pannes qui n'existent pas.
+    """
+    trajet = _trajet(session)
+    dormir, _ = sans_pause
+    run_provider(
+        session,
+        fausse_source(name="transat", offres=[(612, "Air Transat")]),
+        reglages,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    trajet.active = False
+    session.add(trajet)
+    session.commit()
+
+    rapport = run_provider(
+        session,
+        fausse_source(name="transat", muette=True),
+        reglages,
+        MAINTENANT + timedelta(hours=6),
+        sleeper=dormir,
+    )
+
+    assert rapport.queries_run == 0
+    assert rapport.failed is False
+    assert repo.get_or_create_health(session, "transat").disabled_until is None
 ```
 
 - [ ] **Étape 3 : lancer le test et vérifier l'échec**
@@ -3213,7 +3266,7 @@ def run_provider(
 
     total = sum(len(offres) for offres in rapport.offers_by_route.values())
 
-    if total == 0 and produisait_avant:
+    if total == 0 and produisait_avant and rapport.queries_run > 0:
         rapport.failed = True
         rapport.error = "aucune offre alors que le passage précédent en produisait"
         repo.record_provider_failure(
