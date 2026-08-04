@@ -221,3 +221,31 @@ def test_prix_ordinaire_nest_pas_une_trouvaille():
         )
         is False
     )
+
+
+SERIE_ETALEE = [450, 480, 510, 540, 570, 600, 600, 600, 600, 630, 660, 690, 720, 750]
+
+
+def test_le_veto_du_score_z_se_joue_bien_a_moins_trois_virgule_cinq():
+    """Verrouille la valeur du seuil, que les autres tests laissent flotter.
+
+    Les scores z qu'ils atteignent valent -135, -247, -54 pour les cas qui déclenchent et
+    -1.10 pour celui qui refuse : n'importe quel seuil entre -54 et -1.1 les laisse tous
+    verts. Le seuil pourrait donc dériver de -3.5 à -20 sans qu'une seule ligne rougisse,
+    et la détection deviendrait sourde en silence.
+
+    Ce test se place à la frontière. SERIE_ETALEE a pour médiane 600 et pour MAD 60 ; les
+    deux prix ci-dessous sont l'un et l'autre à plus de 50 % sous la médiane, donc tous
+    deux admis par le seuil relatif. Seul le veto les sépare : z = -3.597 pour 280,
+    z = -3.429 pour 295.
+    """
+    commun = {
+        "context": _contexte(SERIE_ETALEE),
+        "threshold": 0.40,
+        "min_history_days": 14,
+        "credibility_floor": 50,
+        "already_alerted": False,
+    }
+
+    assert is_exception(price_cad=280, **commun) is True
+    assert is_exception(price_cad=295, **commun) is False
