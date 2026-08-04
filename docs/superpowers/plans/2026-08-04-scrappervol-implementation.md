@@ -3176,9 +3176,9 @@ def test_la_pause_entre_requetes_respecte_lintervalle_configure(session, fausse_
     """La fixture `reglages` met les pauses à zéro : aucun test ne distingue alors une vraie pause
     de son absence. Celui-ci configure un intervalle non nul exprès.
 
-    Sans pause, le scraper enchaîne les requêtes à pleine vitesse et se fait bannir de la source.
-    C'est une panne qui ne se voit pas en test — elle ne se voit qu'en production, une fois l'adresse
-    bloquée, et elle prive la veille de sa source la plus riche.
+    Sans pause, le scraper enchaîne les requêtes à pleine vitesse et se fait bannir de la
+    source. C'est une panne qui ne se voit pas en test — elle ne se voit qu'en production, une
+    fois l'adresse bloquée, et elle prive la veille de sa source la plus riche.
     """
     reglages_lents = Settings(max_queries_per_route=2, request_pause_min_s=3, request_pause_max_s=7)
     _trajet(session, origins=["YUL", "YQB"])
