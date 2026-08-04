@@ -3358,24 +3358,77 @@ git commit -m "feat: exécution isolée des sources avec détection du succès v
 
 ## Tâche 10 : source Google Flights
 
-La colonne vertébrale du système. Le parsing est la partie fragile : il est donc isolé dans une
-fonction testable hors ligne sur une fixture, conformément au §11.1 du design.
+**Ce brief remplace intégralement celui extrait du plan** : le plan visait l'API `fast-flights` v2,
+alors que `requirements.lock.txt` résout **3.0.2**, dont l'API est incompatible. Voir la section
+finale. Tout le code ci-dessous a été vérifié contre une réponse réelle de Google Flights capturée
+le 4 août 2026.
+
+La colonne vertébrale du système. La traduction des données est la partie fragile : elle est isolée
+dans une fonction pure, testable hors ligne sur une fixture, conformément au §11.1 du design.
 
 **Fichiers :**
 - Créer : `scrappervol/providers/google_flights.py`
-- Créer : `scripts/capture_fixture.py`
-- Créer : `tests/fixtures/google_flights_yul_cdg.json`
-- Test : `tests/providers/test_google_flights.py`
+- Créer : `tests/providers/test_google_flights.py`
+- Créer : `scripts/capture_fixture.py` (hors suite de tests)
+- **Déjà fourni** : `tests/fixtures/google_flights_yul_cdg.json` — ne pas le régénérer
 
 **Interfaces :**
-- Consomme : `SearchQuery`, `FlightOffer` (tâche 2), `ProviderError` (tâche 8), `Settings` (tâche 1).
+- Consomme : `SearchQuery`, `FlightOffer` (tâche 2), `ProviderError`, `EmptyResultError` (tâche 8).
 - Produit :
-  - `GoogleFlightsProvider(settings)` avec `name = "google_flights"` et `search(query)`
-  - `to_offers(raw_flights: list[dict], query: SearchQuery) -> list[FlightOffer]` — fonction pure de
-    traduction, testable sans réseau
-  - `parse_price(text: str) -> int | None` — fonction pure
+  - `GoogleFlightsProvider` : `name = "google_flights"`, `search(query) -> list[FlightOffer]`
+  - `to_offers(resultats, query) -> list[FlightOffer]` — fonction pure
+  - Lève `EmptyResultError` quand aucune offre n'est exploitable ; `ProviderError` sur échec réseau.
 
-- [ ] **Étape 1 : écrire le script de capture**
+## Ce que renvoie réellement fast-flights 3.0.2
+
+Requête réelle YUL→CDG aller-retour, 4 résultats :
+
+```
+type='AC'  price=765  airlines=['Air Canada']  segments=2  escales=1
+type='DL'  price=851  airlines=['Delta']       segments=2  escales=1
+type='AF'  price=966  airlines=['Air France']  segments=1  escales=0
+type='TS'  price=1134 airlines=['Air Transat'] segments=1  escales=0
+```
+
+Faits constatés, non supposés, qui commandent l'implémentation :
+
+1. **`price` est déjà un `int`**, dans la devise passée à `create_query(currency="CAD")`. Aucun
+   texte à analyser. Le `parse_price` du plan (sept formats : `"$1,234"`, `"C$980"`…) n'a plus
+   d'objet — ne l'écris pas.
+2. **Il n'existe pas de champ `stops`** : les escales se dérivent, `len(flights) - 1`.
+3. **`flights` ne contient que les segments de l'aller**, même en aller-retour. La date de retour
+   est donc introuvable dans la réponse.
+4. **`duration` est par segment, en minutes.** Aucune durée totale n'est fournie.
+5. **`airlines` est une liste de noms** (`['Air Canada']`). `type` porte le code IATA de la
+   compagnie principale, ou `'multi'`.
+6. **`SimpleDatetime.time` est de longueur variable** : `[16, 40]` d'ordinaire, mais `[17]` quand
+   les minutes sont nulles — observé sur 1 segment sur 12. Un `heure, minute = sd.time` lèverait
+   `ValueError`. L'implémentation ci-dessous n'utilise pas l'heure et ne rencontre donc pas le
+   piège ; **si tu ajoutes un jour l'heure de départ, souviens-toi de ce cas.**
+   `SimpleDatetime.date` est toujours de longueur 3.
+7. Il n'y a plus de `current_price` (l'indicateur *low/typical/high* de la v2). Ne le cherche pas.
+
+## Décisions déjà prises — ne les rouvre pas
+
+- **`duration_minutes` = somme des durées de segments**, soit le **temps de vol**, pas le
+  porte-à-porte. Le calcul « arrivée − départ » est tentant et **faux** : les deux horodatages sont
+  en heures locales de deux fuseaux différents, sans fuseau indiqué. Pour Air Canada ci-dessus il
+  donnerait 19 h 10 là où le temps de vol est de 8 h 46.
+- **`depart_date` vient du premier segment**, avec repli sur la requête si absente. Si Google
+  décale le vol d'un jour, l'enregistrer sous la date demandée corromprait l'historique et ferait
+  collisionner deux vols distincts sous la même `offer_hash`.
+- **`return_date` vient de la requête** : absente de la réponse (point 3).
+- **`max_stops` est appliqué deux fois** : poussé à Google via `create_query(max_stops=…)` et
+  revérifié dans `to_offers`. Google n'est pas tenu d'honorer le paramètre ; la source est hostile,
+  on ne la croit pas sur parole.
+- **`to_offers` prend des dictionnaires**, pas les dataclasses de la bibliothèque : `search()`
+  convertit via `dataclasses.asdict`. La fonction reste pure, testable hors réseau depuis la
+  fixture, et `raw` est rempli gratuitement.
+- **La devise n'est pas vérifiable.** Rien dans la charge utile ne l'atteste. C'est accepté : le
+  plancher de crédibilité de 50 CAD (tâche 7) rattrape l'ordre de grandeur aberrant qu'un
+  basculement de devise produirait. Écris-le en commentaire, ne bâtis pas de détection illusoire.
+
+- [ ] **Étape 1 : le script de capture**
 
 `scripts/capture_fixture.py` :
 
@@ -3383,12 +3436,15 @@ fonction testable hors ligne sur une fixture, conformément au §11.1 du design.
 """Capture une réponse réelle d'une source et l'enregistre en fixture.
 
 Usage : ./dev shell puis  python scripts/capture_fixture.py google_flights
-Ce script touche le réseau ; il n'est jamais lancé par la suite de tests.
+
+Ce script touche le réseau ; il n'est jamais lancé par la suite de tests. Il sert à rafraîchir la
+fixture le jour où Google change la forme de ses données — c'est-à-dire le jour où la source se met
+à mentir en silence plutôt qu'à échouer franchement.
 """
 
+import dataclasses
 import json
 import sys
-from dataclasses import asdict
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -3397,32 +3453,36 @@ FIXTURES = RACINE / "tests" / "fixtures"
 
 
 def capture_google_flights() -> None:
-    from fast_flights import FlightData, Passengers, get_flights
+    from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
     depart = date.today() + timedelta(days=90)
     retour = depart + timedelta(days=10)
 
-    resultat = get_flights(
-        flight_data=[
-            FlightData(date=depart.isoformat(), from_airport="YUL", to_airport="CDG"),
-            FlightData(date=retour.isoformat(), from_airport="CDG", to_airport="YUL"),
+    requete = create_query(
+        flights=[
+            FlightQuery(date=depart.isoformat(), from_airport="YUL", to_airport="CDG"),
+            FlightQuery(date=retour.isoformat(), from_airport="CDG", to_airport="YUL"),
         ],
         trip="round-trip",
         seat="economy",
         passengers=Passengers(adults=1),
-        fetch_mode="fallback",
+        currency="CAD",
     )
+    resultats = get_flights(requete)
 
     charge = {
-        "current_price": getattr(resultat, "current_price", None),
-        "flights": [asdict(vol) if hasattr(vol, "__dataclass_fields__") else vars(vol)
-                    for vol in resultat.flights],
-        "query": {"origin": "YUL", "destination": "CDG",
-                  "depart": depart.isoformat(), "retour": retour.isoformat()},
+        "query": {
+            "origin": "YUL",
+            "destination": "CDG",
+            "depart": depart.isoformat(),
+            "retour": retour.isoformat(),
+        },
+        "results": [dataclasses.asdict(vol) for vol in resultats],
     }
+    FIXTURES.mkdir(parents=True, exist_ok=True)
     cible = FIXTURES / "google_flights_yul_cdg.json"
     cible.write_text(json.dumps(charge, indent=2, ensure_ascii=False, default=str))
-    print(f"écrit : {cible}  ({len(charge['flights'])} vols)")
+    print(f"écrit : {cible}  ({len(charge['results'])} résultats)")
 
 
 if __name__ == "__main__":
@@ -3433,20 +3493,19 @@ if __name__ == "__main__":
         raise SystemExit(f"source inconnue : {source}")
 ```
 
-- [ ] **Étape 2 : capturer la fixture réelle**
+- [ ] **Étape 2 : la fixture est déjà en place**
+
+`tests/fixtures/google_flights_yul_cdg.json` contient la capture réelle du 4 août 2026 (4 résultats,
+765 à 1134 CAD, escales 0 et 1). **Ne relance pas la capture** : la tâche doit rester rejouable hors
+ligne, et une nouvelle capture changerait les valeurs sous les tests.
+
+Vérifie seulement qu'elle est là :
 
 ```bash
-./dev shell
-# dans le conteneur :
-python scripts/capture_fixture.py google_flights
-exit
+./dev run python -c "import json; d=json.load(open('tests/fixtures/google_flights_yul_cdg.json')); print(len(d['results']), 'résultats')"
 ```
 
-Vérifier que `tests/fixtures/google_flights_yul_cdg.json` contient au moins un vol avec un prix. Si
-`fast-flights` retourne une liste vide, relancer avec `fetch_mode="local"` — le repli Playwright est
-plus lent mais aboutit là où la requête directe échoue. **Cette étape doit produire un fichier non
-vide avant de continuer** : tout le reste de la tâche s'appuie sur la forme réelle des données, pas
-sur une forme supposée.
+Si `./dev run` n'existe pas, utilise `./dev shell` puis la commande à l'intérieur.
 
 - [ ] **Étape 3 : écrire le test qui échoue**
 
@@ -3454,123 +3513,249 @@ sur une forme supposée.
 
 ```python
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 from scrappervol.core.types import SearchQuery, TripType
-from scrappervol.providers.google_flights import parse_price, to_offers
+from scrappervol.providers.base import EmptyResultError
+from scrappervol.providers.google_flights import GoogleFlightsProvider, to_offers
 
-FIXTURE = Path(__file__).parent.parent / "fixtures" / "google_flights_yul_cdg.json"
+FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "google_flights_yul_cdg.json"
+
+
+def _segment(an: int, mois: int, jour: int, duree: int | None) -> dict:
+    return {
+        "from_airport": {"name": "Montréal", "code": "YUL"},
+        "to_airport": {"name": "Paris", "code": "CDG"},
+        # `time` à une seule composante : la forme réellement observée quand les minutes sont
+        # nulles. Elle est ici pour que le cas soit déjà couvert le jour où l'heure sera lue.
+        "departure": {"date": [an, mois, jour], "time": [17]},
+        "arrival": {"date": [an, mois, jour + 1], "time": [5, 55]},
+        "duration": duree,
+        "plane_type": "Boeing 787",
+    }
+
+
+_SEGMENT = _segment(2026, 11, 2, 415)
 
 
 @pytest.fixture
-def donnees_reelles() -> dict:
+def donnees_reelles():
     return json.loads(FIXTURE.read_text())
 
 
 @pytest.fixture
-def requete() -> SearchQuery:
+def requete(donnees_reelles):
+    q = donnees_reelles["query"]
     return SearchQuery(
-        origin="YUL",
-        destination="CDG",
-        depart_date=date(2027, 3, 12),
-        return_date=date(2027, 3, 22),
+        origin=q["origin"],
+        destination=q["destination"],
+        depart_date=date.fromisoformat(q["depart"]),
+        return_date=date.fromisoformat(q["retour"]),
         trip_type=TripType.ROUND_TRIP,
     )
 
 
-@pytest.mark.parametrize(
-    ("texte", "attendu"),
-    [
-        ("$612", 612),
-        ("CA$1,234", 1234),
-        ("1 234 $", 1234),
-        ("612 CAD", 612),
-        ("$612.99", 612),
-        ("Price unavailable", None),
-        ("", None),
-        (None, None),
-    ],
-)
-def test_parse_price_couvre_les_formats_observes(texte, attendu):
-    assert parse_price(texte) == attendu
-
-
 def test_to_offers_traduit_la_fixture_reelle(donnees_reelles, requete):
-    offres = to_offers(donnees_reelles["flights"], requete)
+    """Le contrat de base, mesuré sur des données que Google a réellement renvoyées."""
+    offres = to_offers(donnees_reelles["results"], requete)
 
-    assert offres, "la fixture ne produit aucune offre — le mapping ou la fixture est à revoir"
-    premiere = offres[0]
-    assert premiere.provider == "google_flights"
-    assert premiere.origin == "YUL"
-    assert premiere.destination == "CDG"
-    assert premiere.currency_original == "CAD"
-    assert premiere.price_cad > 0
+    assert len(offres) == len(donnees_reelles["results"])
+    for offre in offres:
+        assert offre.provider == "google_flights"
+        assert offre.origin == "YUL"
+        assert offre.destination == "CDG"
+        assert offre.price_cad > 0
+        assert offre.currency_original == "CAD"
+        assert offre.airline
+        assert offre.stops >= 0
+        assert offre.deep_link.startswith("https://")
 
 
-def test_to_offers_reporte_les_dates_de_la_requete(donnees_reelles, requete):
-    offres = to_offers(donnees_reelles["flights"], requete)
+def test_to_offers_lit_le_prix_entier_sans_analyser_de_texte(donnees_reelles, requete):
+    """fast-flights 3 rend un int : price_cad et price_original en découlent directement.
 
-    assert all(o.depart_date == requete.depart_date for o in offres)
+    Le plan prévoyait d'analyser des chaînes comme "C$1,234". Cette étape n'existe plus ; si
+    quelqu'un la réintroduisait « pour être sûr », ce test le rattraperait.
+    """
+    offres = to_offers(donnees_reelles["results"], requete)
+    attendus = [r["price"] for r in donnees_reelles["results"]]
+
+    assert [o.price_cad for o in offres] == attendus
+    assert [o.price_original for o in offres] == [float(p) for p in attendus]
+
+
+def test_to_offers_derive_les_escales_du_nombre_de_segments(donnees_reelles, requete):
+    """Il n'existe pas de champ `stops` : un vol direct a un segment."""
+    offres = to_offers(donnees_reelles["results"], requete)
+    attendu = [len(r["flights"]) - 1 for r in donnees_reelles["results"]]
+
+    assert [o.stops for o in offres] == attendu
+    assert 0 in attendu, "la fixture doit contenir au moins un vol direct"
+    assert 1 in attendu, "la fixture doit contenir au moins un vol avec escale"
+
+
+def test_to_offers_somme_les_durees_de_segments(donnees_reelles, requete):
+    """duration_minutes est le temps de vol cumulé, jamais l'écart entre deux heures locales."""
+    offres = to_offers(donnees_reelles["results"], requete)
+    attendu = [sum(s["duration"] for s in r["flights"]) for r in donnees_reelles["results"]]
+
+    assert [o.duration_minutes for o in offres] == attendu
+
+
+def test_to_offers_prend_la_date_de_depart_du_premier_segment(donnees_reelles, requete):
+    """La date réelle de l'offre prime sur la date demandée.
+
+    Si Google décale le vol d'un jour, l'enregistrer sous la date demandée fabriquerait un
+    historique qui compare deux vols différents sous la même empreinte.
+    """
+    an, mois, jour = donnees_reelles["results"][0]["flights"][0]["departure"]["date"]
+
+    offres = to_offers(donnees_reelles["results"], requete)
+
+    assert offres[0].depart_date == date(an, mois, jour)
+
+
+def test_to_offers_se_rabat_sur_la_date_demandee_si_la_reponse_nen_porte_pas(requete):
+    """Une date illisible ne doit pas faire disparaître l'offre : on retombe sur la requête."""
+    segment = _segment(2026, 11, 2, 415)
+    segment["departure"]["date"] = None
+    brut = [{"type": "AC", "price": 700, "airlines": ["Air Canada"], "flights": [segment]}]
+
+    (offre,) = to_offers(brut, requete)
+
+    assert offre.depart_date == requete.depart_date
+
+
+def test_to_offers_reporte_la_date_de_retour_de_la_requete(donnees_reelles, requete):
+    """La réponse ne contient que l'aller : le retour ne peut venir que de la requête."""
+    offres = to_offers(donnees_reelles["results"], requete)
+
     assert all(o.return_date == requete.return_date for o in offres)
 
 
+def test_to_offers_joint_les_compagnies(requete):
+    """airlines est une liste : un vol partagé ne doit pas perdre la moitié de son information."""
+    brut = [
+        {
+            "type": "multi",
+            "price": 700,
+            "airlines": ["Air Canada", "Lufthansa"],
+            "flights": [_segment(2026, 11, 2, 300), _segment(2026, 11, 3, 120)],
+        }
+    ]
+
+    (offre,) = to_offers(brut, requete)
+
+    assert offre.airline == "Air Canada, Lufthansa"
+
+
+def test_to_offers_se_rabat_sur_le_type_si_les_compagnies_manquent(requete):
+    """Une offre sans nom de compagnie reste exploitable : airline entre dans offer_hash."""
+    brut = [{"type": "AC", "price": 700, "airlines": [], "flights": [_SEGMENT]}]
+
+    (offre,) = to_offers(brut, requete)
+
+    assert offre.airline == "AC"
+
+
 def test_to_offers_conserve_la_reponse_brute(donnees_reelles, requete):
-    offres = to_offers(donnees_reelles["flights"], requete)
+    """raw est la seule pièce à conviction le jour où un prix aberrant est enregistré."""
+    offres = to_offers(donnees_reelles["results"], requete)
 
-    assert offres[0].raw != {}
-
-
-def test_to_offers_ignore_les_entrees_sans_prix_exploitable(requete):
-    offres = to_offers(
-        [{"name": "Air Transat", "price": "Price unavailable", "stops": 0, "duration": "7 hr 5 min"}],
-        requete,
-    )
-
-    assert offres == []
+    assert offres[0].raw == donnees_reelles["results"][0]
 
 
-def test_to_offers_lit_la_duree_en_minutes(requete):
-    offres = to_offers(
-        [{"name": "Air Transat", "price": "$612", "stops": 0, "duration": "7 hr 5 min"}],
-        requete,
-    )
-
-    assert offres[0].duration_minutes == 425
+@pytest.mark.parametrize(
+    "brut",
+    [
+        {"type": "AC", "price": None, "airlines": ["Air Canada"], "flights": [_SEGMENT]},
+        {"type": "AC", "price": 0, "airlines": ["Air Canada"], "flights": [_SEGMENT]},
+        {"type": "AC", "price": -50, "airlines": ["Air Canada"], "flights": [_SEGMENT]},
+        {"type": "AC", "price": "1 234", "airlines": ["Air Canada"], "flights": [_SEGMENT]},
+        {"type": "AC", "price": 700, "airlines": ["Air Canada"], "flights": []},
+    ],
+    ids=["prix absent", "prix nul", "prix négatif", "prix texte", "sans segment"],
+)
+def test_to_offers_ignore_les_entrees_inexploitables(brut, requete):
+    """Une entrée douteuse est écartée, jamais devinée : un prix inventé devient une fausse alerte,
+    et une fausse alerte coûte plus cher qu'une offre manquée."""
+    assert to_offers([brut], requete) == []
 
 
 def test_to_offers_tolere_une_duree_absente(requete):
-    offres = to_offers([{"name": "Air Transat", "price": "$612", "stops": 0}], requete)
+    """Sans durée fiable, duration_minutes vaut None — le champ est nullable exprès."""
+    brut = [
+        {
+            "type": "AC",
+            "price": 700,
+            "airlines": ["Air Canada"],
+            "flights": [_segment(2026, 11, 2, None)],
+        }
+    ]
 
-    assert offres[0].duration_minutes is None
+    (offre,) = to_offers(brut, requete)
+
+    assert offre.duration_minutes is None
+    assert offre.price_cad == 700
 
 
-def test_to_offers_respecte_le_plafond_descales(requete):
-    limitee = SearchQuery(
-        origin="YUL", destination="CDG", depart_date=date(2027, 3, 12),
-        return_date=date(2027, 3, 22), max_stops=0,
+def test_to_offers_respecte_le_plafond_descales(donnees_reelles):
+    """Google n'est pas tenu d'honorer max_stops : on revérifie côté maison."""
+    q = donnees_reelles["query"]
+    requete_directe = SearchQuery(
+        origin=q["origin"],
+        destination=q["destination"],
+        depart_date=date.fromisoformat(q["depart"]),
+        return_date=date.fromisoformat(q["retour"]),
+        max_stops=0,
     )
 
-    offres = to_offers(
-        [
-            {"name": "Direct", "price": "$800", "stops": 0},
-            {"name": "Avec escale", "price": "$500", "stops": 1},
-        ],
-        limitee,
-    )
+    offres = to_offers(donnees_reelles["results"], requete_directe)
 
-    assert [o.airline for o in offres] == ["Direct"]
+    assert offres, "la fixture contient des vols directs"
+    assert all(o.stops == 0 for o in offres)
+    assert len(offres) < len(donnees_reelles["results"]), "des vols avec escale ont dû être écartés"
+
+
+def test_le_provider_leve_empty_result_quand_rien_nest_exploitable(monkeypatch, requete):
+    """Le silence doit être bruyant : c'est ce que la tâche 9 attend pour armer le disjoncteur."""
+    source = GoogleFlightsProvider()
+    monkeypatch.setattr(source, "_fetch", lambda query: [])
+
+    with pytest.raises(EmptyResultError):
+        source.search(requete)
+
+
+def test_le_provider_traduit_toute_panne_en_provider_error(monkeypatch, requete):
+    """fast-flights lève des exceptions non documentées : le runner attend un type maison."""
+
+    def tombe(query):
+        raise RuntimeError("connexion interrompue")
+
+    source = GoogleFlightsProvider()
+    monkeypatch.setattr(source, "_fetch", tombe)
+
+    with pytest.raises(ProviderError, match="google_flights"):
+        source.search(requete)
+
+
+def test_le_provider_expose_son_nom():
+    assert GoogleFlightsProvider().name == "google_flights"
 ```
+
+N'oublie pas d'ajouter `ProviderError` à l'import de `scrappervol.providers.base`.
 
 - [ ] **Étape 4 : lancer le test et vérifier l'échec**
 
 ```bash
-./dev test tests/providers/test_google_flights.py -v
+./dev test tests/providers/test_google_flights.py 2>&1 | grep -v Container
 ```
 
 Attendu : `ModuleNotFoundError: No module named 'scrappervol.providers.google_flights'`.
+**Colle cette sortie dans ton rapport.**
 
 - [ ] **Étape 5 : écrire l'implémentation**
 
@@ -3579,209 +3764,244 @@ Attendu : `ModuleNotFoundError: No module named 'scrappervol.providers.google_fl
 ```python
 from __future__ import annotations
 
-import logging
-import re
-from dataclasses import asdict, is_dataclass
+import dataclasses
+from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
+from urllib.parse import quote_plus
 
-from scrappervol.config import Settings
 from scrappervol.core.types import FlightOffer, SearchQuery, TripType
-from scrappervol.providers.base import ProviderError
+from scrappervol.providers.base import EmptyResultError, ProviderError
 
-logger = logging.getLogger(__name__)
+NOM = "google_flights"
 
-_CHIFFRES = re.compile(r"\d[\d\s ,\.]*")
-_DUREE = re.compile(r"(?:(\d+)\s*h)?\D*(?:(\d+)\s*m)?", re.IGNORECASE)
+# On demande cette devise à Google et on croit la réponse sur parole : rien dans la charge utile ne
+# l'atteste. Un basculement silencieux vers l'USD passerait donc inaperçu ici — c'est le plancher de
+# crédibilité de la détection qui rattrape l'ordre de grandeur aberrant.
+DEVISE = "CAD"
 
 
-def parse_price(text: str | None) -> int | None:
-    """Extrait un entier de dollars d'un libellé de prix, quelle que soit sa ponctuation."""
-    if not text:
+def _date_du_segment(segment: Mapping[str, Any]) -> date | None:
+    """Date de départ réelle d'un segment, ou None si la réponse ne la porte pas.
+
+    `SimpleDatetime.date` est un triplet (année, mois, jour), toujours observé complet. On reste
+    défensif : cette fonction lit une source hostile, pas une structure maison.
+    """
+    brut = (segment.get("departure") or {}).get("date")
+    if not isinstance(brut, (list, tuple)) or len(brut) != 3:
         return None
-    trouve = _CHIFFRES.search(text)
-    if trouve is None:
+    try:
+        return date(int(brut[0]), int(brut[1]), int(brut[2]))
+    except (TypeError, ValueError):
         return None
-    brut = trouve.group(0)
-    brut = re.sub(r"[\s ,]", "", brut)
-    if brut.count(".") == 1 and len(brut.split(".")[1]) <= 2:
-        brut = brut.split(".")[0]
-    else:
-        brut = brut.replace(".", "")
-    return int(brut) if brut.isdigit() else None
 
 
-def parse_duration(text: str | None) -> int | None:
-    if not text:
-        return None
-    trouve = _DUREE.search(text)
-    if trouve is None:
-        return None
-    heures, minutes = trouve.group(1), trouve.group(2)
-    if heures is None and minutes is None:
-        return None
-    return int(heures or 0) * 60 + int(minutes or 0)
+def _lien(query: SearchQuery, depart: date) -> str:
+    """Lien de recherche Google Flights.
+
+    fast-flights ne rend pas d'URL par offre : le lien pointe la recherche, pas le billet.
+    """
+    termes = f"Flights from {query.origin} to {query.destination} on {depart.isoformat()}"
+    if query.return_date:
+        termes += f" through {query.return_date.isoformat()}"
+    return f"https://www.google.com/travel/flights?q={quote_plus(termes)}"
 
 
-def _champ(vol: Any, *noms: str) -> Any:
-    for nom in noms:
-        if isinstance(vol, dict) and nom in vol:
-            return vol[nom]
-        if hasattr(vol, nom):
-            return getattr(vol, nom)
-    return None
+def to_offers(resultats: Sequence[Mapping[str, Any]], query: SearchQuery) -> list[FlightOffer]:
+    """Traduit la réponse de fast-flights en offres du domaine.
 
-
-def _stops(vol: Any) -> int:
-    valeur = _champ(vol, "stops")
-    if isinstance(valeur, int):
-        return valeur
-    if isinstance(valeur, str):
-        prix = parse_price(valeur)
-        return prix if prix is not None else 0
-    return 0
-
-
-def to_offers(raw_flights: list[Any], query: SearchQuery) -> list[FlightOffer]:
-    """Traduit les vols bruts de fast-flights en offres normalisées. Fonction pure."""
+    Fonction pure : ni réseau ni horloge, ce qui permet de la tester sur une capture réelle. Toute
+    entrée dont le prix ou les segments sont inexploitables est **écartée**, jamais complétée par
+    défaut : une offre devinée devient une fausse alerte, et une fausse alerte coûte plus cher que
+    l'offre manquée.
+    """
     offres: list[FlightOffer] = []
-    for vol in raw_flights:
-        prix = parse_price(_champ(vol, "price"))
-        if prix is None:
+    for brut in resultats:
+        prix = brut.get("price")
+        if not isinstance(prix, int) or isinstance(prix, bool) or prix <= 0:
             continue
 
-        escales = _stops(vol)
+        segments = list(brut.get("flights") or ())
+        if not segments:
+            continue
+
+        escales = len(segments) - 1
         if query.max_stops is not None and escales > query.max_stops:
             continue
 
-        brut = asdict(vol) if is_dataclass(vol) else dict(vol) if isinstance(vol, dict) else vars(vol)
+        durees = [s.get("duration") for s in segments]
+        duree = sum(durees) if all(isinstance(d, int) for d in durees) else None
+
+        compagnies = [c for c in (brut.get("airlines") or ()) if c]
+        compagnie = ", ".join(compagnies) if compagnies else str(brut.get("type") or "?")
+
+        depart = _date_du_segment(segments[0]) or query.depart_date
 
         offres.append(
             FlightOffer(
-                provider="google_flights",
+                provider=NOM,
                 origin=query.origin,
                 destination=query.destination,
-                depart_date=query.depart_date,
+                depart_date=depart,
                 return_date=query.return_date,
                 price_cad=prix,
                 price_original=float(prix),
-                currency_original="CAD",
-                airline=str(_champ(vol, "name", "airline") or "inconnu"),
+                currency_original=DEVISE,
+                airline=compagnie,
                 stops=escales,
-                duration_minutes=parse_duration(_champ(vol, "duration")),
-                deep_link=_deep_link(query),
-                raw=brut,
+                duration_minutes=duree,
+                deep_link=_lien(query, depart),
+                raw=dict(brut),
             )
         )
     return offres
 
 
-def _deep_link(query: SearchQuery) -> str:
-    segment = f"{query.origin}.{query.destination}.{query.depart_date.isoformat()}"
-    if query.return_date:
-        segment += f"*{query.destination}.{query.origin}.{query.return_date.isoformat()}"
-    return f"https://www.google.com/travel/flights?q=Flights%20{segment}&curr=CAD&gl=CA"
-
-
 class GoogleFlightsProvider:
-    name = "google_flights"
+    """Source Google Flights, via fast-flights 3."""
 
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
+    name = NOM
 
-    def search(self, query: SearchQuery) -> list[FlightOffer]:
-        try:
-            from fast_flights import FlightData, Passengers, get_flights
-        except ImportError as erreur:
-            raise ProviderError(f"fast-flights indisponible : {erreur}") from erreur
+    def _fetch(self, query: SearchQuery) -> list[Mapping[str, Any]]:
+        """Appelle la bibliothèque et rend des dictionnaires bruts. Isolé pour les tests."""
+        from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
-        donnees = [
-            FlightData(
+        vols = [
+            FlightQuery(
                 date=query.depart_date.isoformat(),
                 from_airport=query.origin,
                 to_airport=query.destination,
-                max_stops=query.max_stops,
             )
         ]
         if query.trip_type is TripType.ROUND_TRIP and query.return_date:
-            donnees.append(
-                FlightData(
+            vols.append(
+                FlightQuery(
                     date=query.return_date.isoformat(),
                     from_airport=query.destination,
                     to_airport=query.origin,
-                    max_stops=query.max_stops,
                 )
             )
 
-        try:
-            resultat = get_flights(
-                flight_data=donnees,
-                trip="round-trip" if len(donnees) > 1 else "one-way",
-                seat="economy",
-                passengers=Passengers(adults=query.passengers),
-                fetch_mode="fallback",
-                currency="CAD",
-            )
-        except Exception as erreur:  # noqa: BLE001 — traduit vers l'exception du domaine
-            raise ProviderError(f"échec de la requête Google Flights : {erreur}") from erreur
+        requete = create_query(
+            flights=vols,
+            trip="round-trip" if len(vols) == 2 else "one-way",
+            seat="economy",
+            passengers=Passengers(adults=query.passengers),
+            currency=DEVISE,
+            max_stops=query.max_stops,
+        )
+        return [dataclasses.asdict(vol) for vol in get_flights(requete)]
 
-        return to_offers(list(getattr(resultat, "flights", [])), query)
+    def search(self, query: SearchQuery) -> list[FlightOffer]:
+        try:
+            bruts = self._fetch(query)
+        except Exception as exc:  # noqa: BLE001 — traduire toute panne est le contrat de l'interface
+            raise ProviderError(f"{NOM} : échec de la requête ({exc})") from exc
+
+        offres = to_offers(bruts, query)
+        if not offres:
+            raise EmptyResultError(
+                f"{NOM} : aucune offre exploitable pour "
+                f"{query.origin}->{query.destination} le {query.depart_date}"
+            )
+        return offres
 ```
 
-Le paramètre `currency="CAD"` est passé si la bibliothèque l'accepte ; si l'appel échoue avec un
-`TypeError` sur ce mot-clé, le retirer — la source sert nativement en dollars canadiens depuis une
-adresse IP canadienne (§7 du design), et le champ `currency_original` permet de repérer une dérive.
+Le `# noqa: BLE001` de `search` est légitime, pour la même raison qu'à la tâche 9 : `fast-flights`
+lève des exceptions non documentées, et les traduire en `ProviderError` est le contrat de
+l'interface. C'est la **seule** exception à la règle « aucun noqa ».
 
 - [ ] **Étape 6 : vérifier que les tests passent**
 
 ```bash
-./dev test tests/providers/test_google_flights.py -v
-./dev lint
+./dev test 2>&1 | grep -v Container
+./dev lint 2>&1 | grep -v Container
 ```
 
-Attendu : 15 tests passés. Si `to_offers` ne produit rien à partir de la fixture réelle, c'est le
-mapping qu'il faut corriger — pas le test : lire la fixture, ajuster les noms de champ dans `_champ`.
+État actuel : **114 tests**. Attends-toi à 130 environ après cette tâche.
 
 - [ ] **Étape 7 : ajouter un test de fumée réseau marqué `live`**
 
-Ajouter à `tests/providers/test_google_flights.py` :
+Dans le même fichier de test :
 
 ```python
 @pytest.mark.live
 def test_fumee_reseau_google_flights():
-    from scrappervol.config import Settings
-    from scrappervol.providers.google_flights import GoogleFlightsProvider
+    """Touche le vrai Google. Exclu de la suite par défaut : `./dev test -m live` pour le lancer.
 
-    fournisseur = GoogleFlightsProvider(Settings())
-    offres = fournisseur.search(
-        SearchQuery(
-            origin="YUL",
-            destination="CDG",
-            depart_date=date.today().replace(year=date.today().year + 1),
-            return_date=None,
-            trip_type=TripType.ONE_WAY,
-        )
+    Ce test ne vérifie pas des valeurs — elles changent toutes les heures — mais que le contrat de
+    forme tient encore. C'est le seul garde-fou contre le scénario que ce projet redoute : la source
+    change de format, la suite reste verte sur sa fixture figée, et la veille s'éteint en silence.
+    """
+    depart = date.today() + timedelta(days=90)
+    requete = SearchQuery(
+        origin="YUL",
+        destination="CDG",
+        depart_date=depart,
+        return_date=depart + timedelta(days=10),
     )
+
+    offres = GoogleFlightsProvider().search(requete)
 
     assert offres
     assert all(o.price_cad > 0 for o in offres)
+    assert all(o.airline for o in offres)
 ```
 
-Vérifier qu'il est bien exclu par défaut et qu'il passe à la demande :
+Déclare le marqueur dans `pyproject.toml`, sous `[tool.pytest.ini_options]`, et exclus-le par
+défaut :
 
-```bash
-./dev test tests/providers/test_google_flights.py -v          # le live doit être désélectionné
-./dev test tests/providers/test_google_flights.py -m live -v   # doit passer
+```toml
+markers = ["live: touche le réseau réel ; exclu par défaut"]
+addopts = "-m 'not live'"
 ```
+
+Si `addopts` existe déjà, **complète-le** au lieu de l'écraser. Vérifie ensuite les deux sens :
+`./dev test` ne doit pas lancer le test `live`, et `./dev test -m live` doit le lancer.
+
+**Le test `live` a le droit d'échouer** (Google peut bloquer la requête) : ce n'est pas un blocage
+pour la tâche. Rapporte simplement ce que tu observes.
 
 - [ ] **Étape 8 : committer**
 
-```bash
-git add scrappervol/providers/google_flights.py scripts/capture_fixture.py \
-        tests/providers/test_google_flights.py tests/fixtures/google_flights_yul_cdg.json
-git commit -m "feat: source Google Flights avec parsing testé sur fixture réelle"
+```
+feat: source Google Flights via fast-flights 3
+
+L'API v3 ne ressemble pas à la v2 que visait le plan : le prix est déjà un entier dans la
+devise demandée, les escales se dérivent du nombre de segments, et la durée est par segment.
+Le parseur de prix textuel prévu n'a plus d'objet.
+
+to_offers est pure et testée sur une capture réelle, pour que la traduction reste vérifiable
+sans réseau. Le test de fumée `live`, exclu par défaut, est le seul point qui détecte un
+changement de format côté Google — celui qui laisserait la suite verte pendant que la veille
+s'éteint.
 ```
 
----
+## Pourquoi ce brief remplace celui du plan
+
+Le plan visait `fast-flights` **2.x** : `get_flights(flight_data=[FlightData(…)], trip=…, seat=…,
+fetch_mode="fallback")`, résultat portant `.flights` et `.current_price`, prix sous forme de texte.
+
+`requirements.txt` demande `fast-flights>=2.2` et `requirements.lock.txt` a résolu **3.0.2**, dont
+l'API est incompatible : `FlightData`, `Result`, `Flight` et `fetch_mode` n'existent plus ;
+`create_query(...)` puis `get_flights(query)` les remplacent. Le script de capture du plan aurait
+échoué dès l'import, et `to_offers` visait des champs absents.
+
+| point | plan (v2) | réel (3.0.2) |
+|---|---|---|
+| prix | texte à analyser, 7 formats | `int`, devise demandée |
+| escales | champ `stops` | `len(flights) - 1` |
+| durée | champ direct | par segment, à sommer |
+| compagnie | `airline: str` | `airlines: list[str]` |
+| indicateur | `current_price` | absent |
+| devise | conversion à faire | `currency="CAD"` à la requête |
+
+**Vérifié, ne le re-teste pas à l'aveugle :** l'API ci-dessus a été appelée pour de bon, la fixture
+en est le produit. Si un test échoue, regarde l'implémentation, pas le brief.
+
+**Hors de ton périmètre :** `requirements.txt` porte encore `fast-flights>=2.2`, une borne qui
+autorise une v2 incompatible. La resserrer touche au socle de la tâche 1 et sera tranchée à la
+tâche 20. Signale-le dans ton rapport, ne le corrige pas ici.
 
 ## Tâche 11 : source Air Transat
 

@@ -1,0 +1,265 @@
+{
+  "query": {
+    "origin": "YUL",
+    "destination": "CDG",
+    "depart": "2026-11-02",
+    "retour": "2026-11-12"
+  },
+  "results": [
+    {
+      "type": "AC",
+      "price": 765,
+      "airlines": [
+        "Air Canada"
+      ],
+      "flights": [
+        {
+          "from_airport": {
+            "name": "Montréal-Pierre Elliott Trudeau International Airport",
+            "code": "YUL"
+          },
+          "to_airport": {
+            "name": "Toronto Pearson International Airport",
+            "code": "YYZ"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              15,
+              10
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              16,
+              46
+            ]
+          },
+          "duration": 96,
+          "plane_type": "Airbus A220-300 Passenger"
+        },
+        {
+          "from_airport": {
+            "name": "Toronto Pearson International Airport",
+            "code": "YYZ"
+          },
+          "to_airport": {
+            "name": "Aéroport de Paris-Charles de Gaulle",
+            "code": "CDG"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              21,
+              10
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              3
+            ],
+            "time": [
+              10,
+              20
+            ]
+          },
+          "duration": 430,
+          "plane_type": "Boeing 777"
+        }
+      ],
+      "carbon": {
+        "typical_on_route": 395000,
+        "emission": 463000
+      }
+    },
+    {
+      "type": "DL",
+      "price": 851,
+      "airlines": [
+        "Delta"
+      ],
+      "flights": [
+        {
+          "from_airport": {
+            "name": "Montréal-Pierre Elliott Trudeau International Airport",
+            "code": "YUL"
+          },
+          "to_airport": {
+            "name": "Detroit Metropolitan Wayne County Airport",
+            "code": "DTW"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              12,
+              50
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              14,
+              50
+            ]
+          },
+          "duration": 120,
+          "plane_type": "Canadair RJ 700"
+        },
+        {
+          "from_airport": {
+            "name": "Detroit Metropolitan Wayne County Airport",
+            "code": "DTW"
+          },
+          "to_airport": {
+            "name": "Aéroport de Paris-Charles de Gaulle",
+            "code": "CDG"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              18,
+              15
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              3
+            ],
+            "time": [
+              8,
+              10
+            ]
+          },
+          "duration": 475,
+          "plane_type": "Airbus A330"
+        }
+      ],
+      "carbon": {
+        "typical_on_route": 395000,
+        "emission": 532000
+      }
+    },
+    {
+      "type": "AF",
+      "price": 966,
+      "airlines": [
+        "Air France"
+      ],
+      "flights": [
+        {
+          "from_airport": {
+            "name": "Montréal-Pierre Elliott Trudeau International Airport",
+            "code": "YUL"
+          },
+          "to_airport": {
+            "name": "Aéroport de Paris-Charles de Gaulle",
+            "code": "CDG"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              17
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              3
+            ],
+            "time": [
+              5,
+              55
+            ]
+          },
+          "duration": 415,
+          "plane_type": "Boeing 787"
+        }
+      ],
+      "carbon": {
+        "typical_on_route": 395000,
+        "emission": 322000
+      }
+    },
+    {
+      "type": "TS",
+      "price": 1134,
+      "airlines": [
+        "Air Transat"
+      ],
+      "flights": [
+        {
+          "from_airport": {
+            "name": "Montréal-Pierre Elliott Trudeau International Airport",
+            "code": "YUL"
+          },
+          "to_airport": {
+            "name": "Aéroport de Paris-Charles de Gaulle",
+            "code": "CDG"
+          },
+          "departure": {
+            "date": [
+              2026,
+              11,
+              2
+            ],
+            "time": [
+              20,
+              10
+            ]
+          },
+          "arrival": {
+            "date": [
+              2026,
+              11,
+              3
+            ],
+            "time": [
+              9,
+              10
+            ]
+          },
+          "duration": 420,
+          "plane_type": "Airbus A321neo"
+        }
+      ],
+      "carbon": {
+        "typical_on_route": 395000,
+        "emission": 379000
+      }
+    }
+  ]
+}
