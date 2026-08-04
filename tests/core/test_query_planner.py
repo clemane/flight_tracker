@@ -98,6 +98,17 @@ def test_flexible_couvre_lhorizon_par_tranches_de_deux_mois():
 
     assert len(mois_couverts) == 6
 
+    # Et chaque rotation n'explore qu'une tranche. Sans cette seconde assertion, la taille
+    # de tranche pourrait passer de 2 à 3 sans rien faire rougir : l'horizon finirait de
+    # toute façon couvert, seulement en moins de passages. Or ce nombre règle la charge d'un
+    # seul passage, et c'est en envoyant trop de requêtes d'un coup qu'on se fait bloquer.
+    for rotation in range(3):
+        mois_de_la_rotation = {
+            (q.depart_date.year, q.depart_date.month)
+            for q in plan_queries(politique, today=AUJOURDHUI, rotation=rotation, max_queries=10)
+        }
+        assert len(mois_de_la_rotation) == 2
+
 
 def test_flexible_ne_propose_jamais_une_date_passee():
     politique = _politique(
