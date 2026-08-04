@@ -96,8 +96,11 @@ def test_un_echec_incremente_la_sante_et_pose_un_repos_au_troisieme(
 def test_une_source_au_repos_nest_pas_interrogee(session, reglages, fausse_source, sans_pause):
     _trajet(session)
     session.add(
-        ProviderHealth(provider="transat", disabled_until=MAINTENANT + timedelta(hours=2),
-                       consecutive_failures=3)
+        ProviderHealth(
+            provider="transat",
+            disabled_until=MAINTENANT + timedelta(hours=2),
+            consecutive_failures=3,
+        )
     )
     session.commit()
     source = fausse_source(name="transat", offres=[(612, "Air Transat")])
@@ -112,8 +115,11 @@ def test_une_source_au_repos_nest_pas_interrogee(session, reglages, fausse_sourc
 def test_le_repos_echu_laisse_repasser_la_source(session, reglages, fausse_source, sans_pause):
     _trajet(session)
     session.add(
-        ProviderHealth(provider="transat", disabled_until=MAINTENANT - timedelta(minutes=1),
-                       consecutive_failures=3)
+        ProviderHealth(
+            provider="transat",
+            disabled_until=MAINTENANT - timedelta(minutes=1),
+            consecutive_failures=3,
+        )
     )
     session.commit()
     source = fausse_source(name="transat", offres=[(612, "Air Transat")])
@@ -129,13 +135,19 @@ def test_un_succes_remet_la_sante_a_zero(session, reglages, fausse_source, sans_
     _trajet(session)
     dormir, _ = sans_pause
     run_provider(
-        session, fausse_source(name="transat", exception=ProviderError("boum")), reglages,
-        MAINTENANT, sleeper=dormir,
+        session,
+        fausse_source(name="transat", exception=ProviderError("boum")),
+        reglages,
+        MAINTENANT,
+        sleeper=dormir,
     )
 
     run_provider(
-        session, fausse_source(name="transat", offres=[(612, "Air Transat")]), reglages,
-        MAINTENANT, sleeper=dormir,
+        session,
+        fausse_source(name="transat", offres=[(612, "Air Transat")]),
+        reglages,
+        MAINTENANT,
+        sleeper=dormir,
     )
 
     sante = repo.get_or_create_health(session, "transat")
@@ -162,13 +174,19 @@ def test_zero_offre_apres_un_passage_fructueux_est_un_echec(
     _trajet(session)
     dormir, _ = sans_pause
     run_provider(
-        session, fausse_source(name="transat", offres=[(612, "Air Transat")]), reglages,
-        MAINTENANT, sleeper=dormir,
+        session,
+        fausse_source(name="transat", offres=[(612, "Air Transat")]),
+        reglages,
+        MAINTENANT,
+        sleeper=dormir,
     )
 
     rapport = run_provider(
-        session, fausse_source(name="transat", muette=True), reglages,
-        MAINTENANT + timedelta(hours=6), sleeper=dormir,
+        session,
+        fausse_source(name="transat", muette=True),
+        reglages,
+        MAINTENANT + timedelta(hours=6),
+        sleeper=dormir,
     )
 
     assert rapport.failed is True
@@ -186,9 +204,13 @@ def test_zero_offre_apres_un_passage_fructueux_est_un_echec(
 
 
 def test_le_plafond_de_requetes_est_respecte(session, reglages, fausse_source, sans_pause):
-    _trajet(session, origins=["YUL", "YQB"], destinations=["CDG", "ORY", "BRU"],
-            date_policy=DatePolicyKind.WINDOW,
-            policy_params={"mois": ["2027-03", "2027-04"], "sejour_min": 8, "sejour_max": 12})
+    _trajet(
+        session,
+        origins=["YUL", "YQB"],
+        destinations=["CDG", "ORY", "BRU"],
+        date_policy=DatePolicyKind.WINDOW,
+        policy_params={"mois": ["2027-03", "2027-04"], "sejour_min": 8, "sejour_max": 12},
+    )
     source = fausse_source(offres=[(612, "Air Transat")])
     dormir, _ = sans_pause
 
