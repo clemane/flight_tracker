@@ -78,7 +78,7 @@ class Observation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     route_id: int = Field(index=True)
     provider: str = Field(index=True)
-    observed_at: datetime = Field(sa_column=Column(UTCDateTime, index=True))
+    observed_at: datetime = Field(sa_column=Column(UTCDateTime, index=True, nullable=False))
     price_cad: int
     currency_original: str
     price_original: float
@@ -143,5 +143,5 @@ class Alert(SQLModel, table=True):
     route_id: int = Field(index=True)
     observation_id: int | None = None
     kind: AlertKind
-    sent_at: datetime = Field(sa_column=Column(UTCDateTime, index=True))
+    sent_at: datetime = Field(sa_column=Column(UTCDateTime, index=True, nullable=False))
     payload: dict[str, Any] = Field(sa_column=Column(JSON), default_factory=dict)
