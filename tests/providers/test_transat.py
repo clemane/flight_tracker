@@ -34,6 +34,7 @@ def _carte_html(
     duree: str = "4h 50min",
     numeros_vol: tuple[str, ...] = ("TS938",),
     tarifs: tuple[tuple[str, str], ...] = (("eco", "297$"), ("club", "687$")),
+    tarifs_sans_prix: tuple[str, ...] = (),
     avec_compagnie: bool = True,
     avec_duree: bool = True,
 ) -> str:
@@ -59,6 +60,13 @@ def _carte_html(
         f'<span class="expandFare-startFrom">À partir de '
         f'<span class="expandFare-price">{prix}</span></span></span></button></div>'
         for tier, prix in tarifs
+    )
+    # Un bouton tarifaire présent mais sans nœud de prix : observé sur la page réelle pour les
+    # classes affichées comme indisponibles à la date choisie.
+    tarifs_html += "".join(
+        f'<div class="fare"><button class="fare-btn {tier}"><span class="expandFare">'
+        f'<span class="expandFare-startFrom">Non disponible</span></span></button></div>'
+        for tier in tarifs_sans_prix
     )
     return (
         f'<div id="{id_carte}" class="co-shopResult-flightResult-card">'
@@ -248,6 +256,46 @@ def test_parse_results_ecarte_un_prix_illisible_sans_perdre_les_autres_tarifs():
     assert offres[0].raw["fare_tier"] == "club"
 
 
+def test_parse_results_ecarte_un_prix_nul():
+    """Un « 0$ » est un défaut d'affichage, pas une aubaine : le laisser passer produirait le plus
+    bas absolu du trajet et empoisonnerait durablement la base de comparaison."""
+    html = _page_html(_carte_html(tarifs=(("eco", "0$"), ("club", "687$"))))
+
+    offres = parse_results(html, REQUETE_REELLE)
+
+    assert [o.price_cad for o in offres] == [687]
+
+
+def test_parse_results_ecarte_un_bouton_tarifaire_sans_prix():
+    html = _page_html(_carte_html(tarifs=(("club", "687$"),), tarifs_sans_prix=("eco",)))
+
+    offres = parse_results(html, REQUETE_REELLE)
+
+    assert [o.price_cad for o in offres] == [687]
+
+
+def test_parse_results_rend_une_duree_absente_plutot_quune_duree_nulle():
+    """`duration_minutes` vaut None quand la durée est illisible, jamais 0 : un vol de zéro minute
+    serait pris pour une donnée valide par tout ce qui lit ce champ ensuite."""
+    html = _page_html(_carte_html(duree="0h 0min"))
+
+    offres = parse_results(html, REQUETE_REELLE)
+
+    assert offres
+    assert all(o.duration_minutes is None for o in offres)
+
+
+def test_parse_results_ne_fabrique_pas_de_date_depuis_un_mois_inconnu():
+    """Un libellé de mois non reconnu doit faire retomber sur la date demandée, pas produire une
+    date inventée — une mauvaise date range l'observation sous le mauvais jour."""
+    html = _page_html(_carte_html(), date_affichee="Lun. 9 brumaire 2026")
+
+    offres = parse_results(html, REQUETE_REELLE)
+
+    assert offres
+    assert all(o.depart_date == REQUETE_REELLE.depart_date for o in offres)
+
+
 def test_parse_results_se_rabat_sur_la_date_demandee_si_le_curseur_est_absent():
     html = _page_html(_carte_html(), date_affichee=None)
 
@@ -309,8 +357,26 @@ def test_le_provider_expose_son_nom():
     assert TransatProvider().name == "transat"
 
 
-def test_le_provider_refuse_laller_simple_pour_linstant():
+def _interdire_le_reseau(monkeypatch):
+    """Remplace `fetch_html` par une sentinelle qui échoue bruyamment si on l'appelle.
+
+    Sans cette sentinelle, un test de portée se trompe de preuve : en l'absence de garde,
+    `fetch_html` échoue de toute façon (pas de navigateur) en produisant « échec du chargement de
+    https://www.airtransat.com/... », message où `match="transat"` trouve son motif dans le nom de
+    domaine. Le test passerait alors sans que la garde existe.
+    """
+
+    def sentinelle(*args, **kwargs):
+        raise AssertionError(
+            "fetch_html appelée : la portée aurait dû être rejetée avant le réseau"
+        )
+
+    monkeypatch.setattr("scrappervol.providers.transat.fetch_html", sentinelle)
+
+
+def test_le_provider_refuse_laller_simple_avant_douvrir_un_navigateur(monkeypatch):
     """Portée assumée : seul l'aller-retour a été piloté et vérifié à la tâche 11."""
+    _interdire_le_reseau(monkeypatch)
     requete_aller_simple = SearchQuery(
         origin="YUL",
         destination="CUN",
@@ -318,10 +384,26 @@ def test_le_provider_refuse_laller_simple_pour_linstant():
         return_date=None,
         trip_type=TripType.ONE_WAY,
     )
-    source = TransatProvider()
 
-    with pytest.raises(ProviderError, match="transat"):
-        source._fetch(requete_aller_simple)
+    with pytest.raises(ProviderError, match="aller-retour"):
+        TransatProvider()._fetch(requete_aller_simple)
+
+
+def test_le_provider_refuse_plusieurs_passagers_avant_douvrir_un_navigateur(monkeypatch):
+    """Le formulaire n'a été piloté et vérifié que pour un passager : deux adultes suivraient un
+    parcours jamais observé, dont on ne sait pas s'il rend le même balisage."""
+    _interdire_le_reseau(monkeypatch)
+    requete_deux_adultes = SearchQuery(
+        origin="YUL",
+        destination="CUN",
+        depart_date=date(2026, 11, 9),
+        return_date=date(2026, 11, 16),
+        trip_type=TripType.ROUND_TRIP,
+        passengers=2,
+    )
+
+    with pytest.raises(ProviderError, match="passager"):
+        TransatProvider()._fetch(requete_deux_adultes)
 
 
 @pytest.mark.live

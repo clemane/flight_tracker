@@ -35,9 +35,15 @@ class Settings(BaseSettings):
     request_pause_min_s: int = 5
     request_pause_max_s: int = 20
 
+    # `transat` est volontairement absent : la page de résultats pilotée à la tâche 11 n'affiche
+    # que le prix du vol aller (« à partir de »), pas un total aller-retour. Comme `daily_low` est
+    # indexé par (route_id, day) sans le provider et ne garde que le prix le plus bas, activer
+    # cette source ferait d'un prix aller-seul le plus bas permanent du trajet : la médiane de
+    # référence s'effondrerait et aucune aubaine aller-retour ne serait plus jamais détectée.
+    # Le code de la source reste en place, prêt à servir si le parcours est un jour poussé jusqu'au
+    # prix total. Google Flights renvoie déjà les vols Air Transat, à un prix comparable.
     enabled_providers: Annotated[list[str], NoDecode] = [
         "google_flights",
-        "transat",
         "air_canada",
     ]
 

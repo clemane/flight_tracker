@@ -4350,6 +4350,37 @@ Les sélecteurs du plan étaient de toute façon inventés :
 la séparation entre une fonction d'analyse pure et une classe qui l'alimente, la traduction des
 pannes en `ProviderError`. Seule la façon d'atteindre la page de résultats change.
 
+## Résultat de l'essai borné
+
+**Critère de réussite atteint.** Deux passages réels indépendants, à 7 min 32 s d'intervalle
+(15 h 38 et 15 h 45, heure de l'Est, le 4 août 2026), ont chacun produit une page de résultats
+portant les mêmes trois prix CAD distincts pour YUL→CUN : 297, 687, 1 229. Le pilotage du
+formulaire fonctionne et la fixture est versionnée.
+
+**Mais le prix obtenu n'est pas comparable à celui des autres sources.** La page atteinte est
+l'étape « departure » du parcours de réservation : elle affiche un prix « à partir de » pour le
+**vol aller seul**, avant le choix du vol retour. `google_flights.py` rend au contraire un prix
+aller-retour déjà agrégé.
+
+Cela compte parce que `DailyLow` a pour clé primaire `(route_id, day)` — **sans le provider** —
+et que `upsert_daily_low` ne conserve que le prix le plus bas, toutes sources confondues. Un prix
+aller-seul étant structurellement plus bas qu'un aller-retour sur le même trajet, activer cette
+source ferait de Transat le plus bas du jour en permanence. L'historique s'aligne alors sur des
+prix aller-seul, la médiane de référence s'effondre, et **plus aucune aubaine aller-retour ne peut
+être détectée** : la baisse réelle reste au-dessus d'une référence devenue artificiellement basse.
+
+Le système paraîtrait sain — santé des sources au vert, digest quotidien envoyé — tout en ne
+détectant plus jamais rien. C'est la panne silencieuse que le design nomme comme risque principal,
+et elle serait provoquée par notre propre code.
+
+**Conséquence retenue :** `transat` est retiré de `enabled_providers` par défaut. Le code, ses
+tests et la fixture restent en place, prêts à servir si le parcours est un jour poussé jusqu'au
+prix aller-retour total. La couverture n'en souffre presque pas : la capture réelle de la tâche 10
+montre que Google Flights renvoie déjà les vols Air Transat (TS à 1 134 CAD sur YUL→CDG), avec un
+prix agrégé et comparable.
+
+À reprendre à la **tâche 20** (mise en service) si la source est un jour réactivée.
+
 ## Tâche 12 : essai technique puis source Air Canada
 
 Cette tâche a une porte de sortie explicite, prévue au §7 du design : si l'essai échoue, le scraper est
