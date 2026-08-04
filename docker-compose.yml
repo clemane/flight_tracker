@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      PYTHONPATH: /app
+    volumes:
+      - ./data:/app/data
+      - ./scrappervol:/app/scrappervol
+      - ./tests:/app/tests
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  build) docker compose build ;;
+  test)  docker compose run --rm app pytest "$@" ;;
+  lint)  docker compose run --rm app ruff check scrappervol tests "$@" ;;
+  fmt)   docker compose run --rm app ruff format scrappervol tests ;;
+  shell) docker compose run --rm app bash ;;
+  lock)  docker compose run --rm app pip freeze > requirements.lock.txt ;;
+  up)    docker compose up -d ;;
+  logs)  docker compose logs -f app ;;
+  *)     echo "usage: ./dev {build|test|lint|fmt|shell|lock|up|logs}" >&2; exit 1 ;;
+esac
