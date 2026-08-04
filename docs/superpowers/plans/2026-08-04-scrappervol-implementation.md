@@ -4043,28 +4043,76 @@ tâche 20. Signale-le dans ton rapport, ne le corrige pas ici.
 
 Apporte l'inventaire charter et forfait, absent de Google Flights (§4 du design).
 
-**Fichiers :**
-- Créer : `scrappervol/providers/playwright_base.py`, `scrappervol/providers/transat.py`
-- Créer : `tests/fixtures/transat_yul_cun.html`
-- Test : `tests/providers/test_transat.py`
+**Ce brief remplace intégralement celui extrait du plan.** Le plan supposait une URL de recherche
+en GET qui **n'existe pas** : `https://www.airtransat.com/fr-CA/reservation-vol?...` renvoie
+**HTTP 404 « Page introuvable »**. Vérifié en chargeant réellement le site. Voir la section finale.
 
-**Interfaces :**
-- Consomme : `SearchQuery`, `FlightOffer` (tâche 2), `ProviderError` (tâche 8), `parse_price`,
-  `parse_duration` (tâche 10), `Settings` (tâche 1).
-- Produit :
-  - `playwright_base.fetch_html(url, settings, provider_name, wait_selector=None, stealth=False) -> str`
-    — ouvre Chromium, attend le sélecteur, retourne le HTML, écrit la capture de débogage dans
-    `<data_dir>/debug/<provider_name>.html`
-  - `transat.parse_transat_html(html: str, query: SearchQuery) -> list[FlightOffer]` — pur
-  - `transat.TransatProvider(settings)` avec `name = "transat"`
+## Cadre : essai borné, porte de sortie écrite d'avance
 
-- [ ] **Étape 1 : écrire `scrappervol/providers/playwright_base.py`**
+Cette tâche est un **essai**, pas une livraison garantie. Air Transat n'expose aucune page de
+résultats paramétrable : il faut piloter un formulaire à autocomplétion puis attendre le rendu
+d'une application JavaScript. C'est faisable, mais peut échouer sur une protection anti-robot que
+rien ne permet d'anticiper.
+
+**Budget : 90 minutes.** Au-delà, arrête, quel que soit le sentiment d'être « presque au but ».
+
+**Critère de réussite, à ne pas renégocier en cours de route :** obtenir un HTML contenant au
+moins **trois prix distincts en dollars canadiens** pour un aller-retour YUL→CUN, **deux fois de
+suite, à au moins cinq minutes d'intervalle**. La double capture n'est pas une précaution
+excessive : elle distingue une page réellement obtenue d'un coup de chance sur une session pas
+encore signalée comme robot.
+
+Le critère est écrit d'avance parce qu'à mi-essai on est toujours « presque au but », et que sans
+seuil posé à froid on continue indéfiniment.
+
+**Si le critère n'est pas atteint dans le budget :**
+1. Écris `docs/superpowers/notes/2026-08-04-air-transat-abandon.md` : ce que tu as tenté, où ça a
+   bloqué, la dernière capture HTML obtenue, et ce qu'il faudrait pour aboutir.
+2. Ne committe **aucun** code de source Air Transat inutilisable. `playwright_base.py` est utile
+   indépendamment : committe-le seul, avec ses tests.
+3. Rends le verdict **`BLOCKED_BY_DESIGN`** en expliquant le critère et pourquoi il n'est pas atteint.
+
+Ce n'est pas un échec de ta part : l'utilisateur a explicitement choisi « essai borné, repli
+assumé ». Le repli est Google Flights seul, qui fonctionne déjà — disjoncteur et digest compris.
+Une source en moins dégrade la couverture, elle ne casse rien. **Un abandon propre et documenté
+vaut mieux qu'un scraper fragile qui rendra des données fausses en silence** : c'est précisément le
+mode de panne que ce projet redoute le plus.
+
+## Ce qui est déjà établi — ne le refais pas
+
+Relevé en chargeant le site pour de bon depuis le conteneur :
+
+- **Chromium fonctionne** dans l'image : il se lance, charge la page, rend 428 Ko. L'outillage
+  n'est pas en cause.
+- `https://www.airtransat.com/fr-CA/reservation-vol?...` → **404**. N'y retourne pas.
+- `https://www.airtransat.com/fr-CA` → **200**, redirige vers `/fr-CA?search=flight`.
+- Le seul formulaire de la page porte `action="/fr-CA" method="post"`. **Aucun** des 349 liens de
+  la page ne mène à une page de résultats paramétrable.
+- Le formulaire de recherche, champs visibles relevés sur pièce :
+
+| champ | sélecteur |
+|---|---|
+| origine | `#departureOriginDropdown-input` (autocomplétion) |
+| destination | `#departureDestinationDropdown-input` (autocomplétion) |
+| date aller | `#datePickerDeparture` |
+| date retour | `#datePickerReturn` |
+| adultes | `#travelers-adults-input` |
+
+Les champs d'aéroport sont des listes à autocomplétion : taper `YUL` ne suffit pas, il faut
+**attendre la liste de suggestions puis en sélectionner une**, sinon le formulaire part avec un
+champ vide. Même chose pour les dates, qui passent par un sélecteur de calendrier.
+
+- [ ] **Étape 1 : `scrappervol/providers/playwright_base.py`**
+
+Ce module est utile même si Air Transat échoue : écris-le et teste-le en premier.
 
 ```python
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from scrappervol.config import Settings
 from scrappervol.providers.base import ProviderError
@@ -4088,13 +4136,19 @@ def fetch_html(
     settings: Settings,
     provider_name: str,
     wait_selector: str | None = None,
+    interact: Callable[[Any], None] | None = None,
     stealth: bool = False,
     timeout_ms: int = 45_000,
 ) -> str:
     """Charge une page avec Chromium et retourne son HTML, en conservant une capture de débogage.
 
-    La capture est écrite dans tous les cas, succès comme échec : c'est elle qui permet de réparer
-    une dérive de sélecteur sans avoir à reproduire le problème (§10 du design).
+    `interact` reçoit la page après chargement et avant `wait_selector` : c'est par là qu'on
+    remplit un formulaire quand le site n'expose pas de page de résultats adressable par URL.
+
+    La capture de débogage est écrite dans tous les cas, succès comme échec : c'est elle qui permet
+    de réparer une dérive de sélecteur sans avoir à reproduire le problème (§10 du design). Une
+    dérive de sélecteur ne lève pas d'exception — elle rend une liste vide, ce qui ressemble
+    exactement à « pas de vol disponible ».
     """
     try:
         from playwright.sync_api import sync_playwright
@@ -4117,6 +4171,8 @@ def fetch_html(
                     "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
                 )
             page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+            if interact is not None:
+                interact(page)
             if wait_selector:
                 page.wait_for_selector(wait_selector, timeout=timeout_ms)
             html = page.content()
@@ -4131,271 +4187,168 @@ def fetch_html(
     return html
 ```
 
-- [ ] **Étape 2 : capturer la fixture Air Transat**
-
-Ajouter à `scripts/capture_fixture.py` :
+Tests, dans `tests/providers/test_playwright_base.py` — ils ne lancent aucun navigateur :
 
 ```python
-def capture_transat() -> None:
-    from scrappervol.config import Settings
-    from scrappervol.providers.playwright_base import fetch_html
-    from scrappervol.providers.transat import build_search_url
-    from scrappervol.core.types import SearchQuery
-
-    depart = date.today() + timedelta(days=90)
-    requete = SearchQuery(
-        origin="YUL", destination="CUN",
-        depart_date=depart, return_date=depart + timedelta(days=7),
-    )
-    html = fetch_html(build_search_url(requete), Settings(data_dir=Path("/app/data")),
-                      "transat", wait_selector="body")
-    cible = FIXTURES / "transat_yul_cun.html"
-    cible.write_text(html, encoding="utf-8")
-    print(f"écrit : {cible}  ({len(html)} octets)")
-```
-
-et étendre le point d'entrée :
-
-```python
-if __name__ == "__main__":
-    source = sys.argv[1] if len(sys.argv) > 1 else "google_flights"
-    if source == "google_flights":
-        capture_google_flights()
-    elif source == "transat":
-        capture_transat()
-    else:
-        raise SystemExit(f"source inconnue : {source}")
-```
-
-Puis, dans le conteneur, après avoir écrit `build_search_url` à l'étape suivante :
-
-```bash
-./dev shell
-python scripts/capture_fixture.py transat
-exit
-```
-
-- [ ] **Étape 3 : inspecter la fixture et relever les sélecteurs**
-
-Ouvrir `tests/fixtures/transat_yul_cun.html` et identifier : le conteneur d'un résultat de vol, le
-nœud portant le prix, celui portant le nombre d'escales, celui portant la durée. Noter ces sélecteurs :
-ils constituent les constantes de l'étape 5. **Ne pas inventer de sélecteurs** — les lire dans la
-fixture. Si la page est rendue entièrement en JavaScript et que la fixture ne contient aucun prix,
-ajuster `wait_selector` dans `capture_transat` vers un sélecteur réellement présent après le rendu, et
-recapturer.
-
-- [ ] **Étape 4 : écrire le test qui échoue**
-
-`tests/providers/test_transat.py` :
-
-```python
-from datetime import date
-from pathlib import Path
-
 import pytest
 
-from scrappervol.core.types import SearchQuery
-from scrappervol.providers.transat import build_search_url, parse_transat_html
-
-FIXTURE = Path(__file__).parent.parent / "fixtures" / "transat_yul_cun.html"
-
-
-@pytest.fixture
-def html_reel() -> str:
-    return FIXTURE.read_text(encoding="utf-8")
+from scrappervol.config import Settings
+from scrappervol.providers.base import ProviderError
+from scrappervol.providers.playwright_base import debug_path, fetch_html
 
 
-@pytest.fixture
-def requete() -> SearchQuery:
-    return SearchQuery(
-        origin="YUL",
-        destination="CUN",
-        depart_date=date(2027, 2, 10),
-        return_date=date(2027, 2, 17),
-    )
+def test_debug_path_cree_le_dossier_et_nomme_par_source(tmp_path):
+    reglages = Settings(data_dir=tmp_path)
+
+    chemin = debug_path(reglages, "transat")
+
+    assert chemin.parent.is_dir()
+    assert chemin.name == "transat.html"
 
 
-def test_lurl_de_recherche_contient_les_parametres_du_trajet(requete):
-    url = build_search_url(requete)
+def test_debug_path_est_reutilisable_sans_erreur(tmp_path):
+    """Appelé à chaque passage : la création du dossier ne doit pas lever la deuxième fois."""
+    reglages = Settings(data_dir=tmp_path)
 
-    assert "YUL" in url
-    assert "CUN" in url
-    assert "2027-02-10" in url
-
-
-def test_le_parsing_de_la_fixture_produit_des_offres(html_reel, requete):
-    offres = parse_transat_html(html_reel, requete)
-
-    assert offres, "aucune offre extraite — sélecteurs à revoir contre la fixture"
-    assert all(o.provider == "transat" for o in offres)
-    assert all(o.price_cad > 0 for o in offres)
-    assert all(o.currency_original == "CAD" for o in offres)
+    assert debug_path(reglages, "transat") == debug_path(reglages, "transat")
 
 
-def test_le_parsing_reporte_les_dates_de_la_requete(html_reel, requete):
-    offres = parse_transat_html(html_reel, requete)
+def test_playwright_absent_devient_une_provider_error(tmp_path, monkeypatch):
+    """Le runner de la tâche 9 n'attrape que ce qu'il sait nommer ; une ImportError nue
+    remonterait en `Exception` générique et brouillerait le message de santé."""
+    import builtins
 
-    assert all(o.depart_date == requete.depart_date for o in offres)
+    vrai_import = builtins.__import__
 
+    def refuse(nom, *args, **kwargs):
+        if nom.startswith("playwright"):
+            raise ImportError("pas de playwright ici")
+        return vrai_import(nom, *args, **kwargs)
 
-def test_un_html_vide_ne_produit_aucune_offre(requete):
-    assert parse_transat_html("<html><body></body></html>", requete) == []
+    monkeypatch.setattr(builtins, "__import__", refuse)
 
-
-def test_un_html_illisible_ne_leve_pas(requete):
-    """Un parseur qui explose sur une page inattendue transforme une dérive en panne."""
-    assert parse_transat_html("<<<pas du html>>>", requete) == []
-
-
-@pytest.mark.live
-def test_fumee_reseau_transat():
-    from scrappervol.config import Settings
-    from scrappervol.providers.transat import TransatProvider
-
-    fournisseur = TransatProvider(Settings())
-    offres = fournisseur.search(
-        SearchQuery(
-            origin="YUL",
-            destination="CUN",
-            depart_date=date.today().replace(year=date.today().year + 1),
-            return_date=None,
-        )
-    )
-
-    assert offres
+    with pytest.raises(ProviderError, match="Playwright indisponible"):
+        fetch_html("https://exemple.test", Settings(data_dir=tmp_path), "transat")
 ```
 
-- [ ] **Étape 5 : écrire `scrappervol/providers/transat.py`**
+Vérifie le RED, puis le vert, puis **committe cette étape séparément** : elle est acquise quoi
+qu'il arrive ensuite.
+
+```
+feat: socle Playwright partagé avec capture de débogage
+```
+
+- [ ] **Étape 2 : l'essai — atteindre une page de résultats**
+
+Ceci est de la **reconnaissance**, pas du TDD : tu explores un site que personne n'a cartographié.
+Travaille dans un script jetable, pas dans la suite de tests.
+
+Écris `/tmp/essai_transat.py` (hors dépôt) et lance-le par
+`docker compose run --rm app python /tmp/essai_transat.py`. Procède par paliers, en imprimant ce
+que tu observes à chaque étape plutôt qu'en enchaînant à l'aveugle :
+
+1. Charger `https://www.airtransat.com/fr-CA?search=flight`, attendre le rendu.
+2. Remplir `#departureOriginDropdown-input` avec `YUL`, **attendre la liste de suggestions**,
+   imprimer ce qu'elle contient, en sélectionner une.
+3. Idem pour `#departureDestinationDropdown-input` avec `CUN`.
+4. Remplir les dates. Si le calendrier refuse la saisie directe, il faudra naviguer dedans :
+   imprime sa structure avant de deviner.
+5. Soumettre, attendre la navigation, **imprimer l'URL d'arrivée** — si elle contient les
+   paramètres de recherche, note-la : elle rendrait les passages suivants adressables directement,
+   ce qui simplifierait tout.
+6. Imprimer le nombre de motifs de prix trouvés dans le HTML final.
+
+Pour repérer les prix sans connaître les sélecteurs :
 
 ```python
-from __future__ import annotations
-
-import logging
-from urllib.parse import urlencode
-
-from scrappervol.config import Settings
-from scrappervol.core.types import FlightOffer, SearchQuery, TripType
-from scrappervol.providers.base import ProviderError
-from scrappervol.providers.google_flights import parse_duration, parse_price
-from scrappervol.providers.playwright_base import fetch_html
-
-logger = logging.getLogger(__name__)
-
-BASE_URL = "https://www.airtransat.com/fr-CA/reservation-vol"
-
-# Sélecteurs relevés dans tests/fixtures/transat_yul_cun.html.
-# Toute dérive du site se corrige ici, après recapture de la fixture.
-SELECTEUR_RESULTAT = "[data-testid='flight-result'], .flight-result, article.flight"
-SELECTEUR_PRIX = "[data-testid='price'], .price, .fare-price"
-SELECTEUR_COMPAGNIE = "[data-testid='carrier'], .carrier-name"
-SELECTEUR_ESCALES = "[data-testid='stops'], .stops"
-SELECTEUR_DUREE = "[data-testid='duration'], .duration"
-
-
-def build_search_url(query: SearchQuery) -> str:
-    params = {
-        "origin": query.origin,
-        "destination": query.destination,
-        "departureDate": query.depart_date.isoformat(),
-        "adults": str(query.passengers),
-        "currency": "CAD",
-    }
-    if query.trip_type is TripType.ROUND_TRIP and query.return_date:
-        params["returnDate"] = query.return_date.isoformat()
-        params["tripType"] = "roundtrip"
-    else:
-        params["tripType"] = "oneway"
-    return f"{BASE_URL}?{urlencode(params)}"
-
-
-def _texte(noeud, selecteur: str) -> str | None:
-    trouve = noeud.select_one(selecteur)
-    return trouve.get_text(strip=True) if trouve else None
-
-
-def parse_transat_html(html: str, query: SearchQuery) -> list[FlightOffer]:
-    """Extrait les offres d'une page de résultats. Pur, testé hors ligne sur fixture."""
-    try:
-        from bs4 import BeautifulSoup
-    except ImportError as erreur:  # pragma: no cover
-        raise ProviderError(f"BeautifulSoup indisponible : {erreur}") from erreur
-
-    try:
-        soupe = BeautifulSoup(html, "html.parser")
-    except Exception:  # noqa: BLE001 — une page illisible ne doit pas devenir une panne
-        logger.warning("HTML Transat illisible")
-        return []
-
-    offres: list[FlightOffer] = []
-    for noeud in soupe.select(SELECTEUR_RESULTAT):
-        prix = parse_price(_texte(noeud, SELECTEUR_PRIX))
-        if prix is None:
-            continue
-
-        escales_texte = _texte(noeud, SELECTEUR_ESCALES) or ""
-        escales = 0 if "direct" in escales_texte.lower() else (parse_price(escales_texte) or 0)
-        if query.max_stops is not None and escales > query.max_stops:
-            continue
-
-        offres.append(
-            FlightOffer(
-                provider="transat",
-                origin=query.origin,
-                destination=query.destination,
-                depart_date=query.depart_date,
-                return_date=query.return_date,
-                price_cad=prix,
-                price_original=float(prix),
-                currency_original="CAD",
-                airline=_texte(noeud, SELECTEUR_COMPAGNIE) or "Air Transat",
-                stops=escales,
-                duration_minutes=parse_duration(_texte(noeud, SELECTEUR_DUREE)),
-                deep_link=build_search_url(query),
-                raw={"extrait": str(noeud)[:2000]},
-            )
-        )
-    return offres
-
-
-class TransatProvider:
-    name = "transat"
-
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-
-    def search(self, query: SearchQuery) -> list[FlightOffer]:
-        html = fetch_html(
-            build_search_url(query),
-            self._settings,
-            self.name,
-            wait_selector=SELECTEUR_RESULTAT.split(",")[0].strip(),
-        )
-        return parse_transat_html(html, query)
+import re
+prix = re.findall(r"\d[\d\s ,]{2,}\s*\$", html)
+print(f"{len(prix)} motifs de prix, dont : {prix[:8]}")
 ```
 
-Les sélecteurs listés sont ceux à confronter à la fixture : les remplacer par ceux réellement observés
-à l'étape 3. Le format en liste séparée par des virgules est délibéré — il laisse un sélecteur de repli
-si le site sert deux variantes de gabarit.
+Écris la capture obtenue dans un fichier à chaque tentative, même ratée : c'est la seule façon de
+comprendre un blocage anti-robot, qui se manifeste par une page plausible et vide, pas par une
+erreur.
 
-- [ ] **Étape 6 : vérifier que les tests passent**
+- [ ] **Étape 3 : la porte de sortie**
 
-```bash
-./dev test tests/providers/test_transat.py -v
-./dev lint
-```
+Compare ce que tu as obtenu au critère écrit en tête de ce brief : **trois prix distincts, deux
+fois de suite, à cinq minutes d'intervalle.**
 
-Attendu : 5 tests passés, le test `live` désélectionné.
+- **Critère atteint** → continue à l'étape 4.
+- **Critère non atteint dans les 90 minutes** → applique la procédure d'abandon décrite en tête,
+  rends `BLOCKED_BY_DESIGN`, et arrête-toi là. N'improvise pas une source à moitié fonctionnelle.
+
+Sois honnête sur ce point : c'est le seul endroit du projet où s'arrêter est un résultat valide.
+
+- [ ] **Étape 4 : figer la fixture** *(si et seulement si le critère est atteint)*
+
+Ajoute à `scripts/capture_fixture.py` une fonction `capture_transat()` qui rejoue exactement la
+séquence d'interaction qui a marché et écrit `tests/fixtures/transat_yul_cun.html`. Étends le point
+d'entrée du script pour accepter `transat`.
+
+Comme pour Google Flights, la fixture est capturée **une fois** et versionnée : la suite de tests
+doit rester rejouable hors ligne.
+
+- [ ] **Étape 5 : relever les vrais sélecteurs**
+
+Ouvre la fixture et identifie : le conteneur d'un résultat, le nœud du prix, celui des escales,
+celui de la durée, celui de la compagnie.
+
+**N'invente aucun sélecteur — lis-les dans la fixture.** Le brief que celui-ci remplace proposait
+`"[data-testid='flight-result'], .flight-result, article.flight"` : trois variantes en alternative,
+ce qui est l'aveu qu'aucune n'avait été vérifiée. Un sélecteur inventé qui ne correspond à rien
+produit une liste vide, c'est-à-dire un scraper qui annonce « aucun vol » pour toujours.
+
+Note-les dans ton rapport, avec l'extrait de HTML qui les justifie.
+
+- [ ] **Étape 6 : les tests, puis l'implémentation**
+
+Écris d'abord `tests/providers/test_transat.py` contre la fixture, en suivant le modèle de la
+tâche 10 : une fonction pure `parse_results(html, query) -> list[FlightOffer]`, testée hors ligne,
+et une classe `TransatProvider` qui l'alimente.
+
+Les mêmes exigences qu'à la tâche 10 s'appliquent, et elles y ont toutes attrapé un défaut réel :
+
+- Une entrée dont le prix est illisible est **écartée**, jamais devinée.
+- `search` traduit l'absence de résultat en `EmptyResultError` — le silence doit être bruyant,
+  c'est ce que le disjoncteur de la tâche 9 attend pour s'armer.
+- **Un test dont l'assertion serait vraie même si l'implémentation ignorait la donnée testée ne
+  teste rien.** À la tâche 10, le test de la date de départ passait par coïncidence, la fixture
+  portant la même date que la requête. Pour chaque champ que tu extrais du HTML, demande-toi : si
+  je remplaçais cette extraction par une valeur reprise de la requête, mon test rougirait-il ?
+- Prévois le cas « le site a changé » : un HTML sans aucun résultat doit donner une liste vide,
+  pas une exception obscure.
 
 - [ ] **Étape 7 : committer**
 
-```bash
-git add scrappervol/providers/playwright_base.py scrappervol/providers/transat.py \
-        tests/providers/test_transat.py tests/fixtures/transat_yul_cun.html \
-        scripts/capture_fixture.py requirements.txt requirements.lock.txt
-git commit -m "feat: source Air Transat sur Playwright, parsing testé sur fixture"
+```
+feat: source Air Transat par pilotage du formulaire
+
+Le site n'expose aucune page de résultats adressable par URL — celle que supposait le plan
+renvoie un 404. La recherche passe donc par le formulaire à autocomplétion de l'accueil,
+piloté par Playwright, et la fixture est capturée une fois pour que l'analyse reste
+vérifiable hors ligne.
 ```
 
----
+## Pourquoi ce brief remplace celui du plan
+
+Le plan prévoyait `build_search_url(query)` produisant
+`https://www.airtransat.com/fr-CA/reservation-vol?origin=YUL&destination=CUN&departureDate=…`,
+puis une capture de cette URL et un relevé de sélecteurs dans le HTML obtenu.
+
+Vérifié en chargeant l'adresse : **HTTP 404, titre « Page not found / Page introuvable »**, zéro
+motif de prix, zéro nœud correspondant à l'un quelconque des sélecteurs prévus. La fixture aurait
+donc été une page d'erreur, et l'étape « relever les sélecteurs dans la fixture » aurait porté sur
+du vide — sans que rien ne le signale, le brief ne prévoyant aucune vérification du contenu obtenu.
+
+Les sélecteurs du plan étaient de toute façon inventés :
+`"[data-testid='flight-result'], .flight-result, article.flight"`. Ils sont remplacés ici par une
+étape de relevé sur pièce.
+
+**Ce qui reste vrai du plan :** l'architecture. `playwright_base.py` avec sa capture de débogage,
+la séparation entre une fonction d'analyse pure et une classe qui l'alimente, la traduction des
+pannes en `ProviderError`. Seule la façon d'atteindre la page de résultats change.
 
 ## Tâche 12 : essai technique puis source Air Canada
 
