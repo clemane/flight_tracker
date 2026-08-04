@@ -1,5 +1,7 @@
 from datetime import UTC, date, datetime
 
+import pytest
+from sqlalchemy.exc import StatementError
 from sqlmodel import select
 
 from scrappervol.core.types import DatePolicyKind, FlightOffer, TripType
@@ -142,6 +144,22 @@ def test_les_datetimes_conservent_leur_fuseau_apres_persistance(session):
     assert trajet_relu.created_at == MAINTENANT
     assert sante_relue.last_success_at == MAINTENANT
     assert sante_relue.disabled_until == MAINTENANT
+
+
+def test_un_datetime_naif_est_refuse_a_la_persistance(session):
+    session.add(
+        Alert(
+            route_id=1,
+            kind=AlertKind.DIGEST,
+            sent_at=datetime(2026, 8, 4, 14, 0),  # naïf : sans tzinfo
+            payload={},
+        )
+    )
+
+    # SQLAlchemy enveloppe toute exception levée par un TypeDecorator dans un
+    # StatementError ; le ValueError d'origine reste accessible via son message.
+    with pytest.raises(StatementError, match="naïf"):
+        session.commit()
 
 
 def test_une_alerte_journalise_son_type_et_sa_charge(session):
