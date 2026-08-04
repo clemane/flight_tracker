@@ -174,6 +174,16 @@ def test_zero_offre_apres_un_passage_fructueux_est_un_echec(
     assert rapport.failed is True
     assert "aucune offre" in rapport.error.lower()
 
+    # Le rapport n'est qu'un compte rendu en mémoire : ce qui protège vraiment la veille, c'est
+    # l'échec inscrit en base. Remplacer ici record_provider_failure par record_provider_success
+    # laisse le rapport intact et n'arme jamais le disjoncteur — la panne silencieuse exacte que
+    # cette règle existe pour attraper.
+    sante = repo.get_or_create_health(session, "transat")
+    assert sante.consecutive_failures == 1
+    assert sante.last_error is not None
+    assert "aucune offre" in sante.last_error.lower()
+    assert sante.offers_last_run == 0
+
 
 def test_le_plafond_de_requetes_est_respecte(session, reglages, fausse_source, sans_pause):
     _trajet(session, origins=["YUL", "YQB"], destinations=["CDG", "ORY", "BRU"],
@@ -195,6 +205,26 @@ def test_une_pause_est_observee_entre_les_requetes(session, reglages, fausse_sou
     run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
 
     assert len(appels) == len(source.appels)
+
+
+def test_la_pause_entre_requetes_respecte_lintervalle_configure(session, fausse_source, sans_pause):
+    """La fixture `reglages` met les pauses à zéro : aucun test ne distingue alors une vraie pause
+    de son absence. Celui-ci configure un intervalle non nul exprès.
+
+    Sans pause, le scraper enchaîne les requêtes à pleine vitesse et se fait bannir de la source.
+    C'est une panne qui ne se voit pas en test — elle ne se voit qu'en production, une fois l'adresse
+    bloquée, et elle prive la veille de sa source la plus riche.
+    """
+    reglages_lents = Settings(max_queries_per_route=2, request_pause_min_s=3, request_pause_max_s=7)
+    _trajet(session, origins=["YUL", "YQB"])
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, appels = sans_pause
+
+    run_provider(session, source, reglages_lents, MAINTENANT, sleeper=dormir)
+
+    assert len(appels) >= 2, "il faut au moins deux requêtes pour observer une pause"
+    assert appels[0] == 0, "la première requête ne doit pas attendre"
+    assert all(3 <= pause <= 7 for pause in appels[1:]), appels
 
 
 def test_desactiver_ses_trajets_ne_condamne_pas_les_sources(

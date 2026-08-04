@@ -3102,6 +3102,16 @@ def test_zero_offre_apres_un_passage_fructueux_est_un_echec(
     assert rapport.failed is True
     assert "aucune offre" in rapport.error.lower()
 
+    # Le rapport n'est qu'un compte rendu en mémoire : ce qui protège vraiment la veille, c'est
+    # l'échec inscrit en base. Remplacer ici record_provider_failure par record_provider_success
+    # laisse le rapport intact et n'arme jamais le disjoncteur — la panne silencieuse exacte que
+    # cette règle existe pour attraper.
+    sante = repo.get_or_create_health(session, "transat")
+    assert sante.consecutive_failures == 1
+    assert sante.last_error is not None
+    assert "aucune offre" in sante.last_error.lower()
+    assert sante.offers_last_run == 0
+
 
 def test_le_plafond_de_requetes_est_respecte(session, reglages, fausse_source, sans_pause):
     _trajet(session, origins=["YUL", "YQB"], destinations=["CDG", "ORY", "BRU"],
@@ -3160,6 +3170,49 @@ def test_desactiver_ses_trajets_ne_condamne_pas_les_sources(
     assert rapport.queries_run == 0
     assert rapport.failed is False
     assert repo.get_or_create_health(session, "transat").disabled_until is None
+
+
+def test_la_pause_entre_requetes_respecte_lintervalle_configure(session, fausse_source, sans_pause):
+    """La fixture `reglages` met les pauses à zéro : aucun test ne distingue alors une vraie pause
+    de son absence. Celui-ci configure un intervalle non nul exprès.
+
+    Sans pause, le scraper enchaîne les requêtes à pleine vitesse et se fait bannir de la source.
+    C'est une panne qui ne se voit pas en test — elle ne se voit qu'en production, une fois l'adresse
+    bloquée, et elle prive la veille de sa source la plus riche.
+    """
+    reglages_lents = Settings(max_queries_per_route=2, request_pause_min_s=3, request_pause_max_s=7)
+    _trajet(session, origins=["YUL", "YQB"])
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, appels = sans_pause
+
+    run_provider(session, source, reglages_lents, MAINTENANT, sleeper=dormir)
+
+    assert len(appels) >= 2, "il faut au moins deux requêtes pour observer une pause"
+    assert appels[0] == 0, "la première requête ne doit pas attendre"
+    assert all(3 <= pause <= 7 for pause in appels[1:]), appels
+
+
+def test_le_plafond_de_requetes_est_applique_par_trajet(
+    session, reglages, fausse_source, sans_pause
+):
+    """`max_queries_per_route` borne chaque trajet, pas l'ensemble du passage.
+
+    `plan_queries` est appelé à l'intérieur de la boucle sur les trajets actifs, avec le même
+    plafond à chaque itération : deux trajets actifs avec un plafond de 2 doivent produire
+    4 requêtes, pas 2. Ce plafond borne la charge infligée à une source pour *un* trajet donné ;
+    le nombre de trajets suivis est un choix de l'utilisateur, pas une raison d'en surveiller
+    chacun avec moins d'attention. Un seul trajet actif ne peut pas distinguer un plafond « par
+    trajet » d'un plafond « global » : il en faut deux.
+    """
+    premier = _trajet(session, label="Paris", origins=["YUL", "YQB"])
+    second = _trajet(session, label="Rome", origins=["YUL", "YQB"], destinations=["FCO"])
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.queries_run == 4
+    assert set(rapport.offers_by_route) == {premier.id, second.id}
 ```
 
 - [ ] **Étape 3 : lancer le test et vérifier l'échec**
