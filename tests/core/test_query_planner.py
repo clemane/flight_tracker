@@ -152,6 +152,26 @@ def test_la_rotation_finit_par_couvrir_tout_le_plan():
     assert len(vues) == 12
 
 
+def test_flexible_avec_troncature_finit_par_couvrir_tout_lhorizon():
+    """Non-régression : la troncature ne doit pas se figer sur la même moitié du plan à
+    l'intérieur d'une tranche flexible, même quand `rotation` change mais reste dans la
+    même tranche de deux mois.
+    """
+    politique = _politique(
+        origins=["YUL", "YQB"],
+        destinations=["CDG", "ORY", "BRU"],
+        date_policy=DatePolicyKind.FLEXIBLE,
+        policy_params={"horizon_mois": 12, "sejour_min": 7, "sejour_max": 14},
+    )
+
+    couverts = set()
+    for rotation in range(24):
+        for q in plan_queries(politique, today=AUJOURDHUI, rotation=rotation, max_queries=6):
+            couverts.add((q.origin, q.destination, (q.depart_date.year, q.depart_date.month)))
+
+    assert len(couverts) == 72
+
+
 def test_les_contraintes_du_trajet_sont_reportees_sur_chaque_requete():
     politique = _politique(passengers=2, max_stops=1)
 

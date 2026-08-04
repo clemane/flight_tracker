@@ -29,6 +29,11 @@ def _sejour_moyen(params: dict) -> int:
     return (int(params.get("sejour_min", 7)) + int(params.get("sejour_max", 14))) // 2
 
 
+def _nb_tranches(params: dict) -> int:
+    horizon = int(params.get("horizon_mois", 12))
+    return max(1, -(-horizon // _MOIS_PAR_TRANCHE))
+
+
 def _dates_fixed(
     params: dict, trip_type: TripType
 ) -> list[tuple[date, date | None, tuple[date, date] | None]]:
@@ -61,7 +66,7 @@ def _dates_flexible(
 ) -> list[tuple[date, date | None, tuple[date, date] | None]]:
     horizon = int(params.get("horizon_mois", 12))
     sejour = _sejour_moyen(params)
-    nb_tranches = max(1, -(-horizon // _MOIS_PAR_TRANCHE))
+    nb_tranches = _nb_tranches(params)
     tranche = rotation % nb_tranches
 
     resultat = []
@@ -84,19 +89,32 @@ def plan_queries(
 ) -> list[SearchQuery]:
     """Développe une intention de voyage en requêtes concrètes.
 
-    Le plan complet est le produit cartésien des origines, des destinations et des créneaux de
-    dates. Quand il dépasse `max_queries`, seule une tranche est retournée ; `rotation` fait avancer
-    cette tranche d'un passage à l'autre, si bien que la couverture est étalée dans le temps plutôt
+    Le plan complet est le produit cartésien des origines, des destinations et des créneaux
+    de dates. Quand il dépasse `max_queries`, seule une fenêtre est retournée ; elle avance
+    d'un passage à l'autre, si bien que la couverture est étalée dans le temps plutôt
     qu'amputée.
+
+    Cette fenêtre avance au rythme des visites du créneau courant (`rotation // nb_tranches`),
+    et non des rotations. Pour `FLEXIBLE`, `rotation` sélectionne d'abord une tranche de mois :
+    une tranche donnée n'est revue qu'une rotation sur `nb_tranches`. Indexer la fenêtre sur
+    `rotation` la ferait bondir de `nb_tranches * max_queries` entre deux visites — un pas qui
+    retombe sur lui-même dès que `len(plan)` divise ce produit, et fige alors la fenêtre pour
+    toujours. Avec les valeurs par défaut (6 tranches, `max_queries=6`) et 2 origines x 3
+    destinations, la moitié des mois ne serait jamais explorée, sans qu'aucun compteur ni
+    aucune erreur ne le signale. Pour `FIXED` et `WINDOW`, `nb_tranches` vaut 1 et ce compteur
+    de passages coïncide avec `rotation`.
     """
     params = policy.policy_params or {}
 
     if policy.date_policy is DatePolicyKind.FIXED:
         creneaux = _dates_fixed(params, policy.trip_type)
+        nb_tranches = 1
     elif policy.date_policy is DatePolicyKind.WINDOW:
         creneaux = _dates_window(params, policy.trip_type)
+        nb_tranches = 1
     else:
         creneaux = _dates_flexible(params, today, policy.trip_type, rotation)
+        nb_tranches = _nb_tranches(params)
 
     creneaux = [c for c in creneaux if c[0] > today]
     if not creneaux:
@@ -121,6 +139,7 @@ def plan_queries(
     if len(plan) <= max_queries:
         return plan
 
-    debut = (rotation * max_queries) % len(plan)
+    passages = rotation // nb_tranches
+    debut = (passages * max_queries) % len(plan)
     doublé = plan + plan
     return doublé[debut : debut + max_queries]
