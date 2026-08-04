@@ -519,7 +519,7 @@ def test_compute_offer_hash_est_la_meme_fonction_que_la_propriete():
 
 
 def test_les_offres_sont_immuables():
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError):
         _offre().price_cad = 1
 
 
