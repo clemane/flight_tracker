@@ -1,0 +1,257 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from scrappervol.config import Settings
+from scrappervol.core.types import DatePolicyKind
+from scrappervol.providers.base import ProviderError
+from scrappervol.providers.runner import run_provider
+from scrappervol.storage import repo
+from scrappervol.storage.models import ProviderHealth, Route
+
+MAINTENANT = datetime(2026, 8, 4, 14, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def reglages():
+    return Settings(max_queries_per_route=2, request_pause_min_s=0, request_pause_max_s=0)
+
+
+def _trajet(session, **surcharges) -> Route:
+    base = {
+        "label": "Paris",
+        "origins": ["YUL"],
+        "destinations": ["CDG"],
+        "date_policy": DatePolicyKind.FIXED,
+        "policy_params": {"depart": "2027-03-12", "retour": "2027-03-22"},
+    }
+    trajet = Route(**{**base, **surcharges})
+    session.add(trajet)
+    session.commit()
+    session.refresh(trajet)
+    return trajet
+
+
+def test_les_offres_sont_regroupees_par_trajet(session, reglages, fausse_source, sans_pause):
+    trajet = _trajet(session)
+    source = fausse_source(name="google_flights", offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.failed is False
+    assert list(rapport.offers_by_route) == [trajet.id]
+    assert rapport.offers_by_route[trajet.id][0].price_cad == 612
+
+
+def test_les_trajets_inactifs_sont_ignores(session, reglages, fausse_source, sans_pause):
+    _trajet(session, active=False)
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.offers_by_route == {}
+    assert source.appels == []
+
+
+def test_une_exception_est_capturee_et_nabout_pas_hors_du_runner(
+    session, reglages, fausse_source, sans_pause
+):
+    _trajet(session)
+    source = fausse_source(exception=ProviderError("sélecteur introuvable"))
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.failed is True
+    assert "sélecteur introuvable" in rapport.error
+
+
+def test_une_exception_inattendue_est_aussi_capturee(session, reglages, fausse_source, sans_pause):
+    _trajet(session)
+    source = fausse_source(exception=RuntimeError("panne inattendue"))
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.failed is True
+
+
+def test_un_echec_incremente_la_sante_et_pose_un_repos_au_troisieme(
+    session, reglages, fausse_source, sans_pause
+):
+    _trajet(session)
+    source = fausse_source(name="transat", exception=ProviderError("boum"))
+    dormir, _ = sans_pause
+
+    for _ in range(3):
+        run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    sante = repo.get_or_create_health(session, "transat")
+    assert sante.consecutive_failures == 3
+    assert sante.disabled_until == MAINTENANT + timedelta(hours=1)
+
+
+def test_une_source_au_repos_nest_pas_interrogee(session, reglages, fausse_source, sans_pause):
+    _trajet(session)
+    session.add(
+        ProviderHealth(provider="transat", disabled_until=MAINTENANT + timedelta(hours=2),
+                       consecutive_failures=3)
+    )
+    session.commit()
+    source = fausse_source(name="transat", offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.skipped is True
+    assert source.appels == []
+
+
+def test_le_repos_echu_laisse_repasser_la_source(session, reglages, fausse_source, sans_pause):
+    _trajet(session)
+    session.add(
+        ProviderHealth(provider="transat", disabled_until=MAINTENANT - timedelta(minutes=1),
+                       consecutive_failures=3)
+    )
+    session.commit()
+    source = fausse_source(name="transat", offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.skipped is False
+    assert source.appels != []
+
+
+def test_un_succes_remet_la_sante_a_zero(session, reglages, fausse_source, sans_pause):
+    _trajet(session)
+    dormir, _ = sans_pause
+    run_provider(
+        session, fausse_source(name="transat", exception=ProviderError("boum")), reglages,
+        MAINTENANT, sleeper=dormir,
+    )
+
+    run_provider(
+        session, fausse_source(name="transat", offres=[(612, "Air Transat")]), reglages,
+        MAINTENANT, sleeper=dormir,
+    )
+
+    sante = repo.get_or_create_health(session, "transat")
+    assert sante.consecutive_failures == 0
+    assert sante.offers_last_run > 0
+
+
+def test_zero_offre_est_un_succes_la_premiere_fois(session, reglages, fausse_source, sans_pause):
+    """Un trajet qui n'a jamais rien donné peut légitimement ne rien donner."""
+    _trajet(session)
+    source = fausse_source(name="transat", muette=True)
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.failed is False
+
+
+def test_zero_offre_apres_un_passage_fructueux_est_un_echec(
+    session, reglages, fausse_source, sans_pause
+):
+    """Une dérive de sélecteur renvoie un HTTP 200 sans exception : sans cette règle, elle passe
+    inaperçue et le digest annonce fidèlement qu'il n'y a rien à signaler."""
+    _trajet(session)
+    dormir, _ = sans_pause
+    run_provider(
+        session, fausse_source(name="transat", offres=[(612, "Air Transat")]), reglages,
+        MAINTENANT, sleeper=dormir,
+    )
+
+    rapport = run_provider(
+        session, fausse_source(name="transat", muette=True), reglages,
+        MAINTENANT + timedelta(hours=6), sleeper=dormir,
+    )
+
+    assert rapport.failed is True
+    assert "aucune offre" in rapport.error.lower()
+
+
+def test_le_plafond_de_requetes_est_respecte(session, reglages, fausse_source, sans_pause):
+    _trajet(session, origins=["YUL", "YQB"], destinations=["CDG", "ORY", "BRU"],
+            date_policy=DatePolicyKind.WINDOW,
+            policy_params={"mois": ["2027-03", "2027-04"], "sejour_min": 8, "sejour_max": 12})
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert len(source.appels) == reglages.max_queries_per_route
+
+
+def test_une_pause_est_observee_entre_les_requetes(session, reglages, fausse_source, sans_pause):
+    _trajet(session, origins=["YUL", "YQB"])
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, appels = sans_pause
+
+    run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert len(appels) == len(source.appels)
+
+
+def test_desactiver_ses_trajets_ne_condamne_pas_les_sources(
+    session, reglages, fausse_source, sans_pause
+):
+    """Une source qu'on n'interroge pas ne peut pas échouer.
+
+    Sans la garde sur `queries_run`, le passage qui suit la désactivation conclut « aucune offre
+    alors que le passage précédent en produisait », incrémente le compteur d'échecs et pose un
+    repos qui double jusqu'à 24 h. Les sources dorment alors au moment précis où l'utilisateur
+    réactive un trajet, et la page de santé annonce trois pannes qui n'existent pas.
+    """
+    trajet = _trajet(session)
+    dormir, _ = sans_pause
+    run_provider(
+        session,
+        fausse_source(name="transat", offres=[(612, "Air Transat")]),
+        reglages,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    trajet.active = False
+    session.add(trajet)
+    session.commit()
+
+    rapport = run_provider(
+        session,
+        fausse_source(name="transat", muette=True),
+        reglages,
+        MAINTENANT + timedelta(hours=6),
+        sleeper=dormir,
+    )
+
+    assert rapport.queries_run == 0
+    assert rapport.failed is False
+    assert repo.get_or_create_health(session, "transat").disabled_until is None
+
+
+def test_le_plafond_de_requetes_est_applique_par_trajet(
+    session, reglages, fausse_source, sans_pause
+):
+    """`max_queries_per_route` borne chaque trajet, pas l'ensemble du passage.
+
+    `plan_queries` est appelé à l'intérieur de la boucle sur les trajets actifs, avec le même
+    plafond à chaque itération : deux trajets actifs avec un plafond de 2 doivent produire
+    4 requêtes, pas 2. Ce plafond borne la charge infligée à une source pour *un* trajet donné ;
+    le nombre de trajets suivis est un choix de l'utilisateur, pas une raison d'en surveiller
+    chacun avec moins d'attention. Un seul trajet actif ne peut pas distinguer un plafond « par
+    trajet » d'un plafond « global » : il en faut deux.
+    """
+    premier = _trajet(session, label="Paris", origins=["YUL", "YQB"])
+    second = _trajet(session, label="Rome", origins=["YUL", "YQB"], destinations=["FCO"])
+    source = fausse_source(offres=[(612, "Air Transat")])
+    dormir, _ = sans_pause
+
+    rapport = run_provider(session, source, reglages, MAINTENANT, sleeper=dormir)
+
+    assert rapport.queries_run == 4
+    assert set(rapport.offers_by_route) == {premier.id, second.id}
