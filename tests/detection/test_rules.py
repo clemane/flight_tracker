@@ -238,6 +238,12 @@ def test_le_veto_du_score_z_se_joue_bien_a_moins_trois_virgule_cinq():
     deux prix ci-dessous sont l'un et l'autre à plus de 50 % sous la médiane, donc tous
     deux admis par le seuil relatif. Seul le veto les sépare : z = -3.597 pour 280,
     z = -3.429 pour 295.
+
+    Ce que ce test ne couvre pas, faute de pouvoir le faire : le cas z == -3.5 exactement,
+    qui dirait si la comparaison est large ou stricte. Il faudrait un prix tel que
+    (prix - médiane) / MAD vaille -3.5 / 0.6745, soit -5.18902891..., un rapport que deux
+    entiers n'atteignent pas. Rendre la comparaison stricte est donc indétectable, et sans
+    conséquence : aucune donnée réelle ne tombera jamais sur cette valeur.
     """
     commun = {
         "context": _contexte(SERIE_ETALEE),
@@ -249,3 +255,65 @@ def test_le_veto_du_score_z_se_joue_bien_a_moins_trois_virgule_cinq():
 
     assert is_exception(price_cad=280, **commun) is True
     assert is_exception(price_cad=295, **commun) is False
+
+
+SERIE_RONDE = [490, 492, 494, 496, 498, 500, 500, 500, 502, 504, 506, 508, 510, 512]
+
+
+def test_les_bornes_inclusives_se_jouent_bien_a_legalite():
+    """Quatre comparaisons du module sont inclusives ; aucun test ne les exerçait à l'égalité.
+
+    Les rendre strictes — `<= credibility_floor` en `<`, `> mediane*(1-threshold)` en `>=`,
+    `<= target_price_cad` en `<`, `>= find_threshold` en `>` — laissait toute la suite verte.
+    Chacune décide pourtant d'un cas réel : un billet à exactement 50 CAD, un prix pile au
+    plancher relatif, une cible atteinte au dollar près.
+
+    SERIE_RONDE a pour médiane 500.0, donc un plancher à 40 % qui vaut 300.0 tout rond : le
+    seul moyen d'atteindre l'égalité exacte, `price_cad` étant un entier.
+    """
+    exception = {
+        "context": _contexte(SERIE_STABLE),
+        "threshold": 0.40,
+        "min_history_days": 14,
+        "credibility_floor": 50,
+        "already_alerted": False,
+    }
+    # Un prix pile au plancher de crédibilité est jugé trop beau pour être vrai.
+    assert is_exception(price_cad=50, **exception) is False
+
+    relatif = {**exception, "context": _contexte(SERIE_RONDE)}
+    # Pile à 40 % sous la médiane, le prix est admis ; un dollar au-dessus, il ne l'est plus.
+    assert is_exception(price_cad=300, **relatif) is True
+    assert is_exception(price_cad=301, **relatif) is False
+
+    # Une cible atteinte au dollar près est atteinte.
+    assert (
+        is_find(
+            price_cad=500,
+            context=_contexte([]),
+            target_price_cad=500,
+            find_threshold=0.15,
+            min_history_days=14,
+        )
+        is True
+    )
+
+    # 510 est exactement 15 % sous 600 : le seuil de trouvaille est lui aussi inclusif.
+    assert (
+        is_find(
+            price_cad=510,
+            context=_contexte(SERIE_ETALEE),
+            target_price_cad=None,
+            find_threshold=0.15,
+            min_history_days=14,
+        )
+        is True
+    )
+
+
+def test_relative_gap_ne_divise_pas_par_une_mediane_nulle():
+    """Branche jamais exercée par les autres tests, et pourtant seule à séparer une division
+    par zéro d'un résultat neutre. Une médiane nulle ou négative n'a pas de sens ; l'écart
+    relatif non plus."""
+    assert relative_gap(500, 0.0) == 0.0
+    assert relative_gap(500, -10.0) == 0.0
