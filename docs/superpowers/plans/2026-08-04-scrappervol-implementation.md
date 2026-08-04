@@ -2112,6 +2112,28 @@ def test_modified_z_est_indefini_sur_une_serie_dun_seul_element():
     assert mad([500]) == 0.0
     assert modified_z(400, [500]) is None
 
+
+def test_modified_z_vaut_exactement_la_formule_diglewicz_hoaglin():
+    """Verrouille la valeur numérique, donc la constante 0.6745 elle-même.
+
+    Les autres tests ne vérifient que le signe du score et le franchissement du seuil, avec
+    des marges telles qu'ils survivent à une constante fausse : remplacer 0.6745 par 1.0 les
+    laisse tous verts. Or cette constante n'est pas cosmétique. Elle ramène le score à
+    l'échelle d'un score z normal ; sans elle, tout score est gonflé d'un facteur ~1.48, ce
+    qui revient à desserrer le seuil de -3.5 de la détection jusqu'à ~-5.2 sans que rien ne
+    le dise. La détection deviendrait silencieusement plus sourde — le mode de panne que ce
+    projet redoute le plus. Le test fixe donc une valeur calculée à la main :
+    médiane([10, 12, 14, 16, 18]) = 14, MAD = 2, 0.6745 * (8 - 14) / 2 = -2.0235.
+    """
+    assert modified_z(8, [10, 12, 14, 16, 18]) == pytest.approx(-2.0235)
+
+
+def test_mad_refuse_une_serie_vide():
+    """La garde de `mad` n'est autrement jamais exercée : elle est masquée par l'appel interne
+    à `median`, qui lève déjà. La tester ici la rend intentionnelle plutôt qu'accidentelle."""
+    with pytest.raises(ValueError, match="MAD indéfini"):
+        mad([])
+
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier l'échec**
