@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+import calendar
+from datetime import UTC, date, datetime, timedelta
+from itertools import product
+
+from scrappervol.core.types import DatePolicyKind, RoutePolicy, SearchQuery, TripType
+
+_EPOQUE = datetime(1970, 1, 1, tzinfo=UTC)
+_MOIS_PAR_TRANCHE = 2
+
+
+def rotation_for(now: datetime) -> int:
+    """Compteur horaire déterministe, servant à faire défiler un plan tronqué."""
+    return int((now - _EPOQUE).total_seconds() // 3600)
+
+
+def _fenetre_du_mois(annee: int, mois: int) -> tuple[date, date]:
+    dernier = calendar.monthrange(annee, mois)[1]
+    return date(annee, mois, 1), date(annee, mois, dernier)
+
+
+def _decale_mois(reference: date, decalage: int) -> tuple[int, int]:
+    total = reference.month - 1 + decalage
+    return reference.year + total // 12, total % 12 + 1
+
+
+def _sejour_moyen(params: dict) -> int:
+    return (int(params.get("sejour_min", 7)) + int(params.get("sejour_max", 14))) // 2
+
+
+def _dates_fixed(
+    params: dict, trip_type: TripType
+) -> list[tuple[date, date | None, tuple[date, date] | None]]:
+    depart = date.fromisoformat(params["depart"])
+    retour = (
+        date.fromisoformat(params["retour"])
+        if trip_type is TripType.ROUND_TRIP and params.get("retour")
+        else None
+    )
+    flex = int(params.get("flex_days", 0))
+    fenetre = (depart - timedelta(days=flex), depart + timedelta(days=flex)) if flex else None
+    return [(depart, retour, fenetre)]
+
+
+def _dates_window(
+    params: dict, trip_type: TripType
+) -> list[tuple[date, date | None, tuple[date, date] | None]]:
+    sejour = _sejour_moyen(params)
+    resultat = []
+    for mois_iso in params.get("mois", []):
+        annee, mois = (int(part) for part in mois_iso.split("-"))
+        depart = date(annee, mois, 15)
+        retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
+        resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
+    return resultat
+
+
+def _dates_flexible(
+    params: dict, today: date, trip_type: TripType, rotation: int
+) -> list[tuple[date, date | None, tuple[date, date] | None]]:
+    horizon = int(params.get("horizon_mois", 12))
+    sejour = _sejour_moyen(params)
+    nb_tranches = max(1, -(-horizon // _MOIS_PAR_TRANCHE))
+    tranche = rotation % nb_tranches
+
+    resultat = []
+    for offset in range(_MOIS_PAR_TRANCHE):
+        index_mois = tranche * _MOIS_PAR_TRANCHE + offset + 1
+        if index_mois > horizon:
+            break
+        annee, mois = _decale_mois(today, index_mois)
+        depart = date(annee, mois, 15)
+        retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
+        resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
+    return resultat
+
+
+def plan_queries(
+    policy: RoutePolicy,
+    today: date,
+    rotation: int = 0,
+    max_queries: int = 6,
+) -> list[SearchQuery]:
+    """Développe une intention de voyage en requêtes concrètes.
+
+    Le plan complet est le produit cartésien des origines, des destinations et des créneaux de
+    dates. Quand il dépasse `max_queries`, seule une tranche est retournée ; `rotation` fait avancer
+    cette tranche d'un passage à l'autre, si bien que la couverture est étalée dans le temps plutôt
+    qu'amputée.
+    """
+    params = policy.policy_params or {}
+
+    if policy.date_policy is DatePolicyKind.FIXED:
+        creneaux = _dates_fixed(params, policy.trip_type)
+    elif policy.date_policy is DatePolicyKind.WINDOW:
+        creneaux = _dates_window(params, policy.trip_type)
+    else:
+        creneaux = _dates_flexible(params, today, policy.trip_type, rotation)
+
+    creneaux = [c for c in creneaux if c[0] > today]
+    if not creneaux:
+        return []
+
+    plan = [
+        SearchQuery(
+            origin=origine,
+            destination=destination,
+            depart_date=depart,
+            return_date=retour,
+            passengers=policy.passengers,
+            max_stops=policy.max_stops,
+            trip_type=policy.trip_type,
+            calendar_window=fenetre,
+        )
+        for origine, destination, (depart, retour, fenetre) in product(
+            policy.origins, policy.destinations, creneaux
+        )
+    ]
+
+    if len(plan) <= max_queries:
+        return plan
+
+    debut = (rotation * max_queries) % len(plan)
+    doublé = plan + plan
+    return doublé[debut : debut + max_queries]
