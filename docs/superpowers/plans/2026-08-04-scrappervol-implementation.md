@@ -1256,14 +1256,42 @@ Attendu : `ModuleNotFoundError: No module named 'scrappervol.storage.models'`.
 ```python
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, DateTime
+from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
 
 from scrappervol.core.types import DatePolicyKind, FlightOffer, RoutePolicy, TripType
+
+
+class UTCDateTime(TypeDecorator):
+    """Colonne DATETIME qui préserve le fuseau à travers SQLite.
+
+    SQLite n'a pas de type date/heure natif : SQLAlchemy sérialise un ``datetime`` en
+    chaîne en ignorant son décalage, même avec ``DateTime(timezone=True)``. Un
+    ``datetime`` timezone-aware ressort donc naïf après un aller-retour en base — une
+    violation silencieuse de l'invariant « aucun horodatage naïf », qu'aucune des
+    valeurs stockées ni relues ne signale d'elle-même. Ce type impose l'écriture en
+    UTC et ré-attache explicitement le fuseau à la lecture.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: object) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("un datetime naïf ne peut pas être persisté : fournis un tzinfo")
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: object) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC)
 
 
 class AlertKind(StrEnum):
@@ -1286,7 +1314,7 @@ class Route(SQLModel, table=True):
     target_price_cad: int | None = None
     exception_threshold: float = 0.40
     active: bool = True
-    created_at: datetime | None = None
+    created_at: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
 
     def to_policy(self) -> RoutePolicy:
         return RoutePolicy(
@@ -1306,7 +1334,7 @@ class Observation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     route_id: int = Field(index=True)
     provider: str = Field(index=True)
-    observed_at: datetime = Field(index=True)
+    observed_at: datetime = Field(sa_column=Column(UTCDateTime, index=True, nullable=False))
     price_cad: int
     currency_original: str
     price_original: float
@@ -1357,9 +1385,9 @@ class ProviderHealth(SQLModel, table=True):
     __tablename__ = "provider_health"
 
     provider: str = Field(primary_key=True)
-    last_success_at: datetime | None = None
+    last_success_at: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
     consecutive_failures: int = 0
-    disabled_until: datetime | None = None
+    disabled_until: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
     last_error: str | None = None
     offers_last_run: int = 0
 
@@ -1371,7 +1399,7 @@ class Alert(SQLModel, table=True):
     route_id: int = Field(index=True)
     observation_id: int | None = None
     kind: AlertKind
-    sent_at: datetime = Field(index=True)
+    sent_at: datetime = Field(sa_column=Column(UTCDateTime, index=True, nullable=False))
     payload: dict[str, Any] = Field(sa_column=Column(JSON), default_factory=dict)
 ```
 
@@ -1417,7 +1445,65 @@ def session_scope(engine: Engine) -> Iterator[Session]:
 L'import de `models` marqué `noqa: F401` n'est pas un oubli : sans lui, `SQLModel.metadata` est vide au
 moment de `create_all` et la base est créée sans aucune table.
 
-- [ ] **Étape 5 : vérifier que les tests passent**
+- [ ] **Étape 5 : écrire `tests/storage/test_db.py`**
+
+```python
+"""Garde-fous sur `session_scope`.
+
+Cette fonction est le dernier rempart entre une erreur au milieu d'un scan et un
+historique de prix à moitié écrit. Une transaction avortée qui laisserait ses lignes
+derrière elle ne lèverait aucune erreur et ne remplirait aucun journal : elle
+fausserait seulement, et pour toujours, la base de comparaison sur laquelle repose la
+détection d'aubaines. D'où ces tests, que le brief de la tâche 4 ne demandait pas.
+"""
+
+import pytest
+from sqlmodel import Session, select
+
+from scrappervol.storage.db import session_scope
+from scrappervol.storage.models import Route
+
+
+def test_session_scope_commite_en_sortie_normale(engine):
+    with session_scope(engine) as session:
+        session.add(Route(label="YUL-CDG"))
+
+    with Session(engine) as verification:
+        trajets = verification.exec(select(Route)).all()
+    assert [trajet.label for trajet in trajets] == ["YUL-CDG"]
+
+
+def test_session_scope_annule_tout_si_une_exception_survient(engine):
+    with session_scope(engine) as session:
+        session.add(Route(label="déjà en base"))
+
+    with (
+        pytest.raises(RuntimeError, match="panne au milieu du scan"),
+        session_scope(engine) as session,
+    ):
+        session.add(Route(label="ne doit pas survivre"))
+        session.flush()  # la ligne existe dans la transaction avant l'échec
+        raise RuntimeError("panne au milieu du scan")
+
+    with Session(engine) as verification:
+        trajets = verification.exec(select(Route)).all()
+    assert [trajet.label for trajet in trajets] == ["déjà en base"]
+
+
+def test_session_scope_propage_lexception_au_lieu_de_lavaler(engine):
+    with pytest.raises(ValueError, match="remonte jusquici"), session_scope(engine):
+        raise ValueError("remonte jusquici")
+```
+
+`session_scope` mérite ses propres tests parce qu'il est le dernier rempart entre une erreur au
+milieu d'un scan et un historique de prix à moitié écrit : rien ne relit la base pour vérifier
+qu'elle est cohérente. Trois mutations ont été jouées contre ces tests pour vérifier qu'ils
+mordent : remplacer le `rollback()` par un `commit()` les fait rougir (corruption des données),
+retirer le `raise` les fait rougir deux fois (exception avalée), mais retirer le seul
+`rollback()` ne change rien — `session.close()` annule déjà la transaction sous SQLAlchemy. Le
+`rollback()` explicite documente l'intention, il ne la porte pas.
+
+- [ ] **Étape 6 : vérifier que les tests passent**
 
 ```bash
 ./dev test tests/storage/test_models.py -v
@@ -1426,7 +1512,7 @@ moment de `create_all` et la base est créée sans aucune table.
 
 Attendu : 6 tests passés.
 
-- [ ] **Étape 6 : committer**
+- [ ] **Étape 7 : committer**
 
 ```bash
 git add scrappervol/storage tests/storage tests/conftest.py
