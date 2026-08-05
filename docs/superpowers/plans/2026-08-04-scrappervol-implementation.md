@@ -4390,133 +4390,160 @@ Cette précision durcit le critère de réussite de toute source à venir : il p
 
 À reprendre à la **tâche 20** (mise en service) si la source est un jour réactivée.
 
-## Tâche 12 : essai technique puis source Air Canada
+## Tâche 12 : essai borné Air Canada
 
-Cette tâche a une porte de sortie explicite, prévue au §7 du design : si l'essai échoue, le scraper est
-abandonné sans impact sur le reste, l'information qu'il apporte étant déjà couverte par Google Flights.
+### Cadre — à lire avant toute chose
 
-**Fichiers :**
-- Créer : `scrappervol/providers/air_canada.py` (conditionnel)
-- Créer : `tests/fixtures/air_canada_yul_yyz.html` (conditionnel)
-- Créer : `docs/superpowers/notes/2026-08-04-essai-air-canada.md`
-- Test : `tests/providers/test_air_canada.py` (conditionnel)
+Cette tâche est un **essai borné**, pas une implémentation garantie. Elle a une porte de sortie
+explicite et l'emprunter est un résultat honorable, pas un échec personnel.
 
-**Interfaces :**
-- Consomme : `fetch_html` (tâche 11), `parse_price`, `parse_duration` (tâche 10).
-- Produit, si l'essai réussit : `AirCanadaProvider(settings)` avec `name = "air_canada"`, et
-  `parse_air_canada_html(html, query) -> list[FlightOffer]`. Sinon : la note d'essai seule, et le
-  retrait de `air_canada` de `ENABLED_PROVIDERS` dans `.env.example`.
+**Budget : 90 minutes de travail effectif.** Passé ce délai sans avoir atteint le critère ci-dessous,
+applique la procédure d'abandon et arrête-toi. Ne rogne pas le critère pour rentrer dans le budget :
+mieux vaut un abandon net qu'une source qui ment.
 
-- [ ] **Étape 1 : mener l'essai technique, limité à une heure**
+### Critère de réussite — écrit d'avance, non négociable
 
-```bash
-./dev shell
+Deux conditions, toutes deux nécessaires :
+
+1. **Stabilité** : deux chargements de la page de résultats, espacés d'au moins cinq minutes,
+   produisent chacun au moins trois prix en CAD pour le même trajet aller-retour.
+
+2. **Nature du prix** : le prix obtenu est un **total aller-retour**, pas un prix de vol aller.
+
+La condition 2 est celle qui a fait échouer la tâche 11, et c'est la plus importante. ScrapperVol
+surveille des voyages de **vacances** : un prix de vol aller seul ne répond pas à la question posée.
+Ce n'est pas une donnée dégradée qu'on pourrait exploiter faute de mieux, c'est une donnée hors
+sujet. S'y ajoute une raison technique : `daily_low` étant indexé par `(route_id, day)` **sans le
+provider** et ne conservant que le prix le plus bas, une source aller-seul deviendrait le plus bas
+permanent du trajet — médiane de référence effondrée, aubaines indétectables, et aucun voyant au
+rouge pour le signaler.
+
+**Comment vérifier la condition 2 sans te fier à l'apparence de la page.** Beaucoup de sites de
+compagnies affichent « à partir de 297 $ » sur un écran qui est en réalité l'étape de choix du vol
+aller. Utilise un recoupement externe :
+
+```
+Air Canada,     YUL→CUN, départ J+90, retour J+97, 1 adulte → prix relevé : X
+Google Flights, même trajet, mêmes dates, vols AC           → prix relevé : Y
 ```
 
-Dans le conteneur, en Python interactif : charger la page de résultats d'Air Canada avec
-`fetch_html(..., stealth=True)` pour un aller simple YUL→YYZ à trois mois, et vérifier si le HTML
-retourné contient des prix ou une page de défi anti-bot.
+Si `X` est du même ordre que `Y` (entre 0,75·Y et 1,25·Y), c'est un aller-retour. Si `X` tourne
+autour de la moitié de `Y`, c'est un aller seul → **condition 2 non remplie → abandon**.
 
-Critère de réussite, à trancher sans complaisance : **trois chargements consécutifs espacés de cinq
-minutes retournent des prix exploitables**. Un seul succès suivi d'un blocage n'est pas une réussite.
+`GoogleFlightsProvider` (tâche 10, `scrappervol/providers/google_flights.py`) te donne `Y` en
+quelques lignes. Fais ce relevé **avant** de conclure, et écris les deux nombres dans ton rapport.
 
-- [ ] **Étape 2 : consigner le résultat**
+### Procédure d'abandon
 
-```bash
-mkdir -p docs/superpowers/notes
+Si le budget est épuisé, ou si l'une des deux conditions n'est pas remplie :
+
+1. Écris `docs/superpowers/notes/2026-08-05-air-canada-abandon.md` : URL essayées, ce que tu as
+   observé (page de défi anti-bot, CAPTCHA, blocage d'adresse IP, prix aller-seul, formulaire
+   impilotable…), les nombres X et Y si tu les as, et la raison exacte de l'arrêt.
+2. Ne touche pas à `enabled_providers` : `air_canada` n'y figure déjà plus.
+3. Commit : `docs: essai Air Canada infructueux, source écartée`.
+4. Rends un verdict `BLOCKED_BY_DESIGN` en expliquant ce qui bloque.
+
+Cette note vaut mieux que la mémoire : dans six mois, elle évitera de refaire l'essai à l'aveugle.
+
+### Ce que tu sais déjà, et qui doit guider l'essai
+
+**Ne présume pas d'une URL adressable.** Le brief d'origine prévoyait `build_search_url(query)`
+produisant une URL de résultats. C'est exactement ce que le plan supposait pour Air Transat, et
+l'URL en question renvoyait un **404** : la fixture aurait été une page d'erreur et le relevé des
+sélecteurs aurait porté sur du vide, sans que rien ne le signale. **Vérifie d'abord ce que tu
+obtiens réellement**, avant d'écrire quoi que ce soit qui en dépende. Si l'accès passe par le
+formulaire, `fetch_html` accepte un paramètre `interact` (voir `transat.py`).
+
+**Le trajet d'essai est un aller-retour.** Le brief d'origine proposait
+`SearchQuery(origin="YUL", destination="YYZ", depart_date=date(2027, 2, 10))` — sans `return_date`,
+donc un aller simple. C'est le piège même que cette tâche doit éviter. Utilise **YUL→CUN,
+aller-retour, départ J+90, retour J+97, 1 adulte**.
+
+**Air Canada est réputé mieux protégé qu'Air Transat.** Un défi anti-bot ou un blocage est un
+résultat plausible et acceptable — c'est la raison d'être de la porte de sortie. `fetch_html`
+accepte `stealth=True`.
+
+**Sauvegarde le HTML à chaque tentative, même ratée.** `playwright_base.py` écrit déjà une capture
+de débogage. Une page de défi sauvegardée est une preuve ; la même page non sauvegardée n'est
+qu'une impression.
+
+**Sois économe en requêtes.** Deux chargements espacés de cinq minutes suffisent au critère. Une
+rafale de tentatives est le meilleur moyen de faire bloquer l'adresse IP et de rendre le verdict
+ininterprétable.
+
+### Étapes
+
+- [ ] **Étape 1 : reconnaissance**
+
+Dans `/tmp/essai_air_canada.py`, hors du dépôt. Procède par paliers en imprimant ce que tu observes
+à chaque fois : combien de nœuds correspondent, combien de prix trouvés, quel titre de page. Ne
+passe au palier suivant qu'une fois le précédent confirmé.
+
+- [ ] **Étape 2 : relevé croisé et porte de sortie**
+
+Relève `X` (Air Canada) et `Y` (Google Flights, vols AC, mêmes dates). Écris les deux dans ton
+rapport. Applique le critère. Si l'une des conditions manque → procédure d'abandon, et tu t'arrêtes.
+
+- [ ] **Étape 3, cas de réussite : capturer la fixture**
+
+Une seule capture, versionnée dans `tests/fixtures/air_canada_yul_cun.html`, plus une fonction
+`capture_air_canada()` dans `scripts/capture_fixture.py`, sur le modèle de `capture_transat()`.
+
+- [ ] **Étape 4, cas de réussite : relever les vrais sélecteurs**
+
+Lis-les **dans la fixture**, n'en invente aucun. Le brief d'origine proposait
+`"[data-testid='flight-result'], .flight-result, article.flight"` : trois variantes en alternative,
+ce qui est l'aveu qu'aucune n'avait été vérifiée. Note chaque sélecteur retenu dans ton rapport avec
+l'extrait de HTML qui le justifie.
+
+- [ ] **Étape 5, cas de réussite : tests puis implémentation**
+
+`tests/providers/test_air_canada.py` d'abord, sur le modèle de `test_transat.py` : une fonction pure
+`parse_results(html, query) -> list[FlightOffer]` testable hors ligne, une classe
+`AirCanadaProvider` qui l'alimente, un test `live` marqué `@pytest.mark.live`.
+
+Quatre exigences, chacune ayant attrapé un défaut réel aux tâches 10 et 11 :
+
+- **Une assertion vraie même si l'implémentation ignorait la donnée testée ne teste rien.** À la
+  tâche 10, le test de la date de départ passait par coïncidence, la fixture portant la même date
+  que la requête. Pour chaque champ extrait du HTML, demande-toi : si je remplaçais cette extraction
+  par une valeur reprise de la requête, mon test rougirait-il ? Si non, change la fixture ou la
+  requête jusqu'à ce qu'il rougisse.
+- **Ne matche pas un message d'erreur sur une sous-chaîne qui apparaît ailleurs.** À la tâche 11,
+  `pytest.raises(ProviderError, match="transat")` passait même sans la garde testée, parce que le
+  message d'échec de `fetch_html` contient l'URL `airtransat.com`. Pour tester une garde qui doit
+  agir **avant** le réseau, remplace `fetch_html` par une sentinelle qui lève `AssertionError` si
+  elle est appelée — voir `_interdire_le_reseau` dans `tests/providers/test_transat.py`.
+- Un prix illisible est **écarté**, jamais deviné ni remplacé par une valeur par défaut.
+- `search` traduit l'absence de résultat en `EmptyResultError` : le silence doit être bruyant, c'est
+  ce que le disjoncteur de la tâche 9 attend pour s'armer.
+
+- [ ] **Étape 6, cas de réussite : activer la source**
+
+Ajoute `"air_canada"` à `enabled_providers` dans `scrappervol/config.py` — et seulement là. Ajoute
+un test qui verrouille cette activation en disant **pourquoi** elle est justifiée, en citant les
+deux nombres X et Y du relevé croisé. Le commentaire existant dans `config.py` explique pourquoi
+`transat` en est absent : complète-le, ne l'efface pas.
+
+- [ ] **Étape 7 : committer**
+
+```
+feat: source Air Canada
+
+<une ligne sur la façon dont la page de résultats est atteinte>
+Prix vérifié aller-retour total par recoupement avec Google Flights : X CAD contre Y CAD pour
+les mêmes vols aux mêmes dates.
 ```
 
-Créer `docs/superpowers/notes/2026-08-04-essai-air-canada.md` avec : la date, l'URL essayée, le
-verdict (réussi ou échoué), ce qui a été observé (page de résultats, défi CAPTCHA, blocage
-d'adresse IP), et la décision. Cette note vaut mieux que la mémoire : dans six mois, elle évitera de
-refaire l'essai à l'aveugle.
+### Rappels d'environnement
 
-- [ ] **Étape 3, cas d'échec : retirer la source proprement**
+- Tout passe par `./dev test`, `./dev lint`, `./dev fmt`. Jamais `pytest` ni `ruff` sur l'hôte.
+- **Jamais `./dev build`** (dix minutes).
+- Filtre la sortie avec `grep -v Container`, **jamais** `grep -v "^\["`.
+- Aucun `# noqa`, sauf `BLE001` sur les `except Exception` d'isolation des sources.
+- La suite est à 169 tests, 2 deselected, lint propre. Laisse-la dans cet état ou meilleur.
 
-Si le critère n'est pas rempli :
-
-```bash
-# retirer air_canada de ENABLED_PROVIDERS dans .env.example et .env
-git add docs/superpowers/notes/2026-08-04-essai-air-canada.md .env.example
-git commit -m "docs: essai Air Canada infructueux, source écartée"
-```
-
-Puis passer directement à la tâche 13. Les tâches suivantes ne présument nulle part de l'existence
-d'Air Canada : elles itèrent sur `settings.enabled_providers`.
-
-- [ ] **Étape 4, cas de réussite : capturer la fixture**
-
-Étendre `scripts/capture_fixture.py` d'une fonction `capture_air_canada()` bâtie sur le même modèle
-que `capture_transat()`, avec `stealth=True`, puis :
-
-```bash
-./dev shell
-python scripts/capture_fixture.py air_canada
-exit
-```
-
-- [ ] **Étape 5, cas de réussite : écrire le test qui échoue**
-
-`tests/providers/test_air_canada.py`, calqué sur `test_transat.py` : URL de recherche contenant les
-paramètres du trajet, parsing de la fixture produisant des offres à prix positif en CAD, HTML vide
-donnant zéro offre, HTML illisible ne levant pas, et un test `live` marqué.
-
-```python
-from datetime import date
-from pathlib import Path
-
-import pytest
-
-from scrappervol.core.types import SearchQuery
-from scrappervol.providers.air_canada import build_search_url, parse_air_canada_html
-
-FIXTURE = Path(__file__).parent.parent / "fixtures" / "air_canada_yul_yyz.html"
-
-
-@pytest.fixture
-def requete() -> SearchQuery:
-    return SearchQuery(origin="YUL", destination="YYZ", depart_date=date(2027, 2, 10))
-
-
-def test_lurl_contient_les_parametres(requete):
-    url = build_search_url(requete)
-    assert "YUL" in url and "YYZ" in url
-
-
-def test_le_parsing_de_la_fixture_produit_des_offres(requete):
-    offres = parse_air_canada_html(FIXTURE.read_text(encoding="utf-8"), requete)
-
-    assert offres
-    assert all(o.provider == "air_canada" for o in offres)
-    assert all(o.price_cad > 0 for o in offres)
-
-
-def test_un_html_vide_ne_produit_aucune_offre(requete):
-    assert parse_air_canada_html("<html></html>", requete) == []
-
-
-def test_un_html_illisible_ne_leve_pas(requete):
-    assert parse_air_canada_html("<<<pas du html>>>", requete) == []
-```
-
-- [ ] **Étape 6, cas de réussite : écrire l'implémentation**
-
-`scrappervol/providers/air_canada.py`, sur le modèle exact de `transat.py` : `build_search_url`,
-constantes de sélecteurs relevées dans la fixture, `parse_air_canada_html` pur et tolérant, classe
-`AirCanadaProvider` appelant `fetch_html(..., stealth=True)`. Le `name` vaut `"air_canada"`.
-
-- [ ] **Étape 7, cas de réussite : vérifier et committer**
-
-```bash
-./dev test tests/providers/test_air_canada.py -v
-./dev lint
-git add scrappervol/providers/air_canada.py tests/providers/test_air_canada.py \
-        tests/fixtures/air_canada_yul_yyz.html scripts/capture_fixture.py \
-        docs/superpowers/notes/2026-08-04-essai-air-canada.md
-git commit -m "feat: source Air Canada en Playwright furtif"
-```
-
----
 
 ## Tâche 13 : construction et rendu des courriels
 
