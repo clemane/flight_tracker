@@ -1,0 +1,668 @@
+/* ScrapperVol — feuille unique.
+ *
+ * Écrite à la main, sans framework ni build : l'application tourne en local et doit s'afficher
+ * sans réseau. La palette est déclarée en variables et bascule sur `prefers-color-scheme`.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --fond: #f6f7f9;
+  --fond-carte: #ffffff;
+  --fond-creux: #eef0f4;
+  --bord: #dfe3ea;
+  --bord-fort: #c7cdd8;
+  --texte: #16181d;
+  --texte-doux: #5c6472;
+  --texte-faible: #8b93a1;
+  --accent: #2f6df6;
+  --accent-doux: #e8efff;
+  --vert: #0f7a4a;
+  --vert-doux: #e2f5ec;
+  --rouge: #c0392b;
+  --rouge-doux: #fdecea;
+  --ambre: #9a6700;
+  --ambre-doux: #fff4d6;
+
+  --r-s: 6px;
+  --r-m: 10px;
+  --r-l: 14px;
+  --ombre: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 10%);
+  --ombre-haute: 0 4px 12px rgb(16 24 40 / 8%), 0 2px 4px rgb(16 24 40 / 6%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #0f1115;
+    --fond-carte: #171a21;
+    --fond-creux: #1e222b;
+    --bord: #272c37;
+    --bord-fort: #39404e;
+    --texte: #e8eaee;
+    --texte-doux: #a2aab8;
+    --texte-faible: #6e7686;
+    --accent: #6f9bff;
+    --accent-doux: #1b2740;
+    --vert: #4ade9a;
+    --vert-doux: #12301f;
+    --rouge: #ff7b6b;
+    --rouge-doux: #34191a;
+    --ambre: #e5b567;
+    --ambre-doux: #33280f;
+    --ombre: 0 1px 2px rgb(0 0 0 / 40%);
+    --ombre-haute: 0 4px 14px rgb(0 0 0 / 45%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- ossature */
+
+.entete {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--fond) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--bord);
+}
+
+.entete-interieur {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.marque {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--texte);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.marque svg {
+  color: var(--accent);
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.nav a {
+  padding: 6px 12px;
+  border-radius: var(--r-s);
+  color: var(--texte-doux);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.nav a:hover {
+  background: var(--fond-creux);
+  color: var(--texte);
+}
+
+.nav a[aria-current="page"] {
+  background: var(--accent-doux);
+  color: var(--accent);
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 24px 72px;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.sous-titre {
+  color: var(--texte-doux);
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+
+.section {
+  margin-top: 40px;
+}
+
+.section-entete {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-entete .compte {
+  color: var(--texte-faible);
+  font-size: 13px;
+}
+
+.section-entete .a-droite {
+  margin-left: auto;
+}
+
+/* ------------------------------------------------------------------ cartes */
+
+.carte {
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-l);
+  box-shadow: var(--ombre);
+}
+
+.carte-corps {
+  padding: 18px 20px;
+}
+
+.grille {
+  display: grid;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------- formulaire de recherche */
+
+.recherche {
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-l);
+  box-shadow: var(--ombre-haute);
+  padding: 18px;
+}
+
+.recherche-grille {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr 1fr 1fr 0.7fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 860px) {
+  .recherche-grille {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .recherche-grille .champ-action {
+    grid-column: 1 / -1;
+  }
+}
+
+.champ {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.champ label,
+form label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--texte-faible);
+}
+
+input,
+select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--bord-fort);
+  border-radius: var(--r-s);
+  background: var(--fond);
+  color: var(--texte);
+  font: inherit;
+  font-size: 14px;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+input::placeholder {
+  color: var(--texte-faible);
+}
+
+.aeroport {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ boutons */
+
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bouton:hover {
+  filter: brightness(1.08);
+}
+
+.bouton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bouton-second {
+  background: var(--fond-carte);
+  border-color: var(--bord-fort);
+  color: var(--texte);
+}
+
+.bouton-second:hover {
+  background: var(--fond-creux);
+  filter: none;
+}
+
+.bouton-discret {
+  background: transparent;
+  border-color: transparent;
+  color: var(--texte-doux);
+  padding: 6px 10px;
+}
+
+.bouton-discret:hover {
+  background: var(--fond-creux);
+  color: var(--texte);
+  filter: none;
+}
+
+.bouton-danger:hover {
+  background: var(--rouge-doux);
+  color: var(--rouge);
+}
+
+.bouton-petit {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ------------------------------------------------------------------ offres */
+
+.offre {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-l);
+  box-shadow: var(--ombre);
+}
+
+.offre:hover {
+  border-color: var(--bord-fort);
+}
+
+.offre-prix {
+  font-size: 27px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  min-width: 118px;
+}
+
+.offre-details {
+  min-width: 0;
+}
+
+.offre-ligne {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offre-compagnie {
+  font-weight: 570;
+}
+
+.offre-meta {
+  color: var(--texte-doux);
+  font-size: 13.5px;
+  margin-top: 3px;
+}
+
+.offre-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.point {
+  color: var(--texte-faible);
+}
+
+/* Le meilleur prix de la recherche : un liseré, pas un fond, pour ne pas écraser les autres. */
+.offre[data-meilleur] {
+  border-color: var(--vert);
+  box-shadow: var(--ombre), inset 3px 0 0 var(--vert);
+}
+
+/* ------------------------------------------------------------------ badges */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: var(--fond-creux);
+  color: var(--texte-doux);
+}
+
+.badge-vert {
+  background: var(--vert-doux);
+  color: var(--vert);
+}
+
+.badge-rouge {
+  background: var(--rouge-doux);
+  color: var(--rouge);
+}
+
+.badge-ambre {
+  background: var(--ambre-doux);
+  color: var(--ambre);
+}
+
+.badge-accent {
+  background: var(--accent-doux);
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------- état des sources */
+
+.sources {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  background: var(--fond-carte);
+  font-size: 13px;
+  color: var(--texte-doux);
+}
+
+.source-nom {
+  font-weight: 560;
+  color: var(--texte);
+}
+
+.pastille {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--texte-faible);
+  flex: none;
+}
+
+.source[data-statut="en_cours"] .pastille {
+  background: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.source[data-statut="termine"] .pastille {
+  background: var(--vert);
+}
+
+.source[data-statut="erreur"] .pastille {
+  background: var(--rouge);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source[data-statut="en_cours"] .pastille {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------- états */
+
+.vide {
+  text-align: center;
+  padding: 44px 24px;
+  border: 1px dashed var(--bord-fort);
+  border-radius: var(--r-l);
+  color: var(--texte-doux);
+}
+
+.vide p {
+  margin: 0 0 16px;
+}
+
+.erreur {
+  padding: 11px 14px;
+  border-radius: var(--r-m);
+  background: var(--rouge-doux);
+  color: var(--rouge);
+  border: 1px solid color-mix(in srgb, var(--rouge) 28%, transparent);
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+.discret {
+  color: var(--texte-doux);
+  font-size: 13.5px;
+}
+
+.faible {
+  color: var(--texte-faible);
+}
+
+/* ------------------------------------------------------- trajets surveillés */
+
+.trajet {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 20px;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-l);
+  box-shadow: var(--ombre);
+}
+
+@media (max-width: 720px) {
+  .trajet,
+  .offre {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+.trajet-libelle {
+  font-weight: 600;
+}
+
+.trajet-prix {
+  font-size: 21px;
+  font-weight: 660;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.trajet[data-trouvaille] .trajet-prix {
+  color: var(--vert);
+}
+
+.trajet-inactif {
+  opacity: 0.55;
+}
+
+.sparkline {
+  display: block;
+  color: var(--texte-faible);
+  overflow: visible;
+}
+
+.trajet[data-trouvaille] .sparkline {
+  color: var(--vert);
+}
+
+/* --------------------------------------------------------------- tableaux */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-l);
+  overflow: hidden;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bord);
+}
+
+th {
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--texte-faible);
+  background: var(--fond-creux);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tr[data-muet] td {
+  background: var(--rouge-doux);
+}
+
+/* ------------------------------------------------------------ formulaires */
+
+.formulaire {
+  max-width: 720px;
+}
+
+.ligne {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.ligne > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.formulaire .actions {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--bord);
+}
+
+.en-ligne {
+  display: inline;
+}
+
+/* --------------------------------------------------------- indicateur htmx */
+
+.chargement {
+  display: none;
+}
+
+.htmx-request .chargement,
+.htmx-request.chargement {
+  display: inline-flex;
+}
+
+.tourniquet {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: tourne 0.7s linear infinite;
+  flex: none;
+}
+
+@keyframes tourne {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tourniquet {
+    animation-duration: 3s;
+  }
+}
