@@ -1,0 +1,116 @@
+{# Composants d'interface.
+
+   Tout gabarit qui a besoin d'un champ, d'un badge ou d'un bouton passe par ici. L'intérêt n'est
+   pas l'économie de lignes : c'est qu'une correction — ajouter l'autocomplétion, changer le
+   balisage d'un libellé, poser un attribut d'accessibilité — se fasse à un seul endroit au lieu
+   d'être répétée dans chaque page, avec la certitude d'en oublier une.
+
+   Chaque macro pose aussi les crochets `data-*` sur lesquels les tests s'ancrent, pour qu'ils ne
+   dépendent pas des classes CSS, libres de changer.
+
+   S'utilise ainsi :
+       {% import "ui.html.j2" as ui %}
+       {{ ui.champ("label", "Libellé", valeur=route.label, requis=true) }}
+#}
+
+{# --------------------------------------------------------------- rangées #}
+
+{# Une rangée de champs. `{% call %}` permet d'y placer n'importe quels champs. #}
+{% macro rangee() %}
+  <div class="ligne">{{ caller() }}</div>
+{% endmacro %}
+
+{# ---------------------------------------------------------------- champs #}
+
+{# Champ de saisie. `extra` reçoit les attributs bruts dont un cas particulier aurait besoin. #}
+{% macro champ(nom, etiquette, type="text", valeur="", placeholder="", requis=false,
+                aide="", min=none, max=none, pas=none, classe="", extra="") %}
+  <div class="champ">
+    <label for="{{ nom }}">{{ etiquette }}{% if aide %}
+      <span class="discret">{{ aide }}</span>{% endif %}</label>
+    <input type="{{ type }}" id="{{ nom }}" name="{{ nom }}"
+           {% if classe %} class="{{ classe }}"{% endif %}
+           value="{{ valeur if valeur is not none else '' }}"
+           {% if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+           {% if requis %} required{% endif %}
+           {% if min is not none %} min="{{ min }}"{% endif %}
+           {% if max is not none %} max="{{ max }}"{% endif %}
+           {% if pas is not none %} step="{{ pas }}"{% endif %}
+           {{ extra }}>
+  </div>
+{% endmacro %}
+
+{# Champ d'aéroport avec suggestions.
+
+   `multiple` autorise plusieurs codes séparés par des virgules (« YUL, YQB ») : la sélection
+   complète alors le dernier code saisi au lieu de remplacer toute la valeur. C'est la seule
+   différence entre le champ de la recherche et ceux d'un trajet surveillé. #}
+{% macro champ_aeroport(nom, etiquette, valeur="", placeholder="", requis=false, multiple=false) %}
+  <div class="champ champ-aeroport">
+    <label for="{{ nom }}">{{ etiquette }}</label>
+    <input class="aeroport" type="text" id="{{ nom }}" name="{{ nom }}"
+           value="{{ valeur }}"
+           {% if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+           {% if requis %} required{% endif %}
+           autocomplete="off" data-aeroport {% if multiple %} data-multiple{% endif %}
+           role="combobox" aria-autocomplete="list" aria-expanded="false"
+           aria-controls="suggestions-{{ nom }}"
+           {# `input` et non `keyup` : le collage à la souris et la saisie assistée ne
+              produisent pas de frappe clavier, et resteraient sans suggestion. #}
+           hx-get="/airports?champ={{ nom }}{% if multiple %}&amp;multiple=1{% endif %}"
+           hx-trigger="input changed delay:150ms"
+           {# `hx-swap` explicite : un formulaire déclarant `outerHTML` pour ses résultats
+              transmet l'attribut à ses descendants, et la boîte serait remplacée par la liste,
+              donc introuvable à la frappe suivante. #}
+           hx-target="#suggestions-{{ nom }}" hx-swap="innerHTML">
+    <div class="boite-suggestions" id="suggestions-{{ nom }}"></div>
+    <span class="choix-aeroport discret" id="choix-{{ nom }}"></span>
+  </div>
+{% endmacro %}
+
+{# Liste déroulante. `options` est une suite de couples (valeur, libellé). #}
+{% macro champ_select(nom, etiquette, options, valeur="", extra="") %}
+  <div class="champ">
+    <label for="{{ nom }}">{{ etiquette }}</label>
+    <select id="{{ nom }}" name="{{ nom }}" {{ extra }}>
+      {% for val, libelle in options %}
+        <option value="{{ val }}" {% if val == valeur %}selected{% endif %}>{{ libelle }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+
+{# ----------------------------------------------------------- indications #}
+
+{# Pastille d'état. `ton` vaut vert, ambre ou rouge ; `crochet` est l'attribut `data-*` visé
+   par les tests, sans quoi ceux-ci s'ancreraient sur les classes CSS. #}
+{% macro badge(texte, ton="", crochet="") %}
+  <span class="badge{% if ton %} badge-{{ ton }}{% endif %}"
+        {% if crochet %} data-{{ crochet }}{% endif %}>{{ texte }}</span>
+{% endmacro %}
+
+{% macro bouton(texte, href=none, ton="", type="submit", extra="") %}
+  {% set classes = "bouton" ~ (" bouton-" ~ ton if ton else "") %}
+  {% if href %}
+    <a class="{{ classes }}" href="{{ href }}" {{ extra }}>{{ texte }}</a>
+  {% else %}
+    <button class="{{ classes }}" type="{{ type }}" {{ extra }}>{{ texte }}</button>
+  {% endif %}
+{% endmacro %}
+
+{# En-tête de section : titre, compte facultatif, action alignée à droite. #}
+{% macro entete_section(titre, compte=none) %}
+  <div class="section-entete">
+    <h2>{{ titre }}</h2>
+    {% if compte is not none %}<span class="compte">{{ compte }}</span>{% endif %}
+    {% if caller %}<span class="a-droite">{{ caller() }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
+{# Bloc affiché à la place d'une liste vide. #}
+{% macro vide(titre, detail="", crochet="") %}
+  <div class="vide" {% if crochet %} data-{{ crochet }}{% endif %}>
+    <p>{{ titre }}</p>
+    {% if detail %}<p class="discret">{{ detail }}</p>{% endif %}
+  </div>
+{% endmacro %}

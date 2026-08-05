@@ -1,3 +1,4 @@
+{% import "ui.html.j2" as ui %}
 {# Une carte de trajet. S'appuie sur la variable de boucle `route` du gabarit appelant. #}
 <article class="trajet{% if not route.active %} trajet-inactif{% endif %}" data-trajet="{{ route.id }}">
   <div>
@@ -13,14 +14,14 @@
 
   <div>
     {% if route.active %}
-      <span class="badge badge-vert" data-actif>actif</span>
+      {{ ui.badge("actif", ton="vert", crochet="actif") }}
     {% else %}
-      <span class="badge" data-inactif>désactivé</span>
+      {{ ui.badge("désactivé", crochet="inactif") }}
     {% endif %}
   </div>
 
   <div class="actions">
-    <a class="bouton bouton-discret bouton-petit" href="/routes/{{ route.id }}/edit">Modifier</a>
+    {{ ui.bouton("Modifier", href="/routes/" ~ route.id ~ "/edit", ton="discret bouton-petit") }}
     <form class="en-ligne" method="post" action="/routes/{{ route.id }}/toggle">
       <button class="bouton bouton-discret bouton-petit" type="submit">
         {% if route.active %}Mettre en pause{% else %}Réactiver{% endif %}

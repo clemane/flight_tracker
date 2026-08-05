@@ -1,36 +1,33 @@
+{% import "ui.html.j2" as ui %}
+
 {% if date_policy == 'fixed' %}
-  <div class="ligne">
-    <div><label for="depart">Départ</label>
-      <input type="date" id="depart" name="depart" required
-             value="{{ params.get('depart', '') }}"></div>
-    <div><label for="retour">Retour <span class="discret">(obligatoire pour un aller-retour)</span></label>
-      <input type="date" id="retour" name="retour" value="{{ params.get('retour', '') }}"></div>
-    <div><label for="flex_days">Souplesse (jours)</label>
-      <input type="number" id="flex_days" name="flex_days" min="0" max="14"
-             value="{{ params.get('flex_days', 0) }}"></div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ("depart", "Départ", type="date", requis=true, valeur=params.get('depart', '')) }}
+    {{ ui.champ("retour", "Retour", type="date", valeur=params.get('retour', ''),
+                aide="(obligatoire pour un aller-retour)") }}
+    {{ ui.champ("flex_days", "Souplesse (jours)", type="number", min=0, max=14,
+                valeur=params.get('flex_days', 0)) }}
+  {% endcall %}
+
 {% elif date_policy == 'window' %}
-  <label for="mois">Mois visés (AAAA-MM, séparés par des virgules)</label>
-  <input type="text" id="mois" name="mois" placeholder="2027-03, 2027-04"
-         value="{{ params.get('mois', []) | join(', ') }}">
-  <div class="ligne">
-    <div><label for="sejour_min">Séjour minimal (jours)</label>
-      <input type="number" id="sejour_min" name="sejour_min" min="1"
-             value="{{ params.get('sejour_min', 8) }}"></div>
-    <div><label for="sejour_max">Séjour maximal (jours)</label>
-      <input type="number" id="sejour_max" name="sejour_max" min="1"
-             value="{{ params.get('sejour_max', 12) }}"></div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ("mois", "Mois visés", aide="(AAAA-MM, séparés par des virgules)",
+                placeholder="2027-03, 2027-04", valeur=params.get('mois', []) | join(', ')) }}
+  {% endcall %}
+  {% call ui.rangee() %}
+    {{ ui.champ("sejour_min", "Séjour minimal (jours)", type="number", min=1,
+                valeur=params.get('sejour_min', 8)) }}
+    {{ ui.champ("sejour_max", "Séjour maximal (jours)", type="number", min=1,
+                valeur=params.get('sejour_max', 12)) }}
+  {% endcall %}
+
 {% else %}
-  <div class="ligne">
-    <div><label for="horizon_mois">Horizon (mois)</label>
-      <input type="number" id="horizon_mois" name="horizon_mois" min="1" max="12"
-             value="{{ params.get('horizon_mois', 12) }}"></div>
-    <div><label for="sejour_min">Séjour minimal (jours)</label>
-      <input type="number" id="sejour_min" name="sejour_min" min="1"
-             value="{{ params.get('sejour_min', 7) }}"></div>
-    <div><label for="sejour_max">Séjour maximal (jours)</label>
-      <input type="number" id="sejour_max" name="sejour_max" min="1"
-             value="{{ params.get('sejour_max', 14) }}"></div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ("horizon_mois", "Horizon (mois)", type="number", min=1, max=12,
+                valeur=params.get('horizon_mois', 12)) }}
+    {{ ui.champ("sejour_min", "Séjour minimal (jours)", type="number", min=1,
+                valeur=params.get('sejour_min', 7)) }}
+    {{ ui.champ("sejour_max", "Séjour maximal (jours)", type="number", min=1,
+                valeur=params.get('sejour_max', 14)) }}
+  {% endcall %}
 {% endif %}

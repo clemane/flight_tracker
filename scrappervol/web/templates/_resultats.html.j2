@@ -1,3 +1,4 @@
+{% import "ui.html.j2" as ui %}
 {# Fragment de résultats, rafraîchi par htmx.
 
    Il se recharge lui-même toutes les 2 s tant qu'une source travaille. Quand tout est terminé,
@@ -46,12 +47,11 @@
                   {% if ligne.offre.stops == 0 %}direct{% else %}{{ ligne.offre.stops }} escale{{ 's' if ligne.offre.stops > 1 else '' }}{% endif %}
                 </span>
                 {% if ligne.meilleur %}
-                  <span class="badge badge-vert">meilleur prix</span>
+                  {{ ui.badge("meilleur prix", ton="vert") }}
                 {% endif %}
                 {% if ligne.gap_vs_median and ligne.gap_vs_median > 0.05 %}
-                  <span class="badge badge-vert" data-ecart>
-                    {{ (ligne.gap_vs_median * 100) | round | int }} % sous la médiane
-                  </span>
+                  {{ ui.badge((ligne.gap_vs_median * 100) | round | int ~ " % sous la médiane",
+                              ton="vert", crochet="ecart") }}
                 {% endif %}
               </div>
               <div class="offre-meta">

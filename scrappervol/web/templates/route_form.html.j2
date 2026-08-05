@@ -1,4 +1,5 @@
 {% extends "base.html.j2" %}
+{% import "ui.html.j2" as ui %}
 {% block titre %}{% if route %}Modifier un trajet{% else %}Nouveau trajet{% endif %} — ScrapperVol{% endblock %}
 {% block contenu %}
 
@@ -11,88 +12,54 @@ quotidien.</p>
 <form class="formulaire carte carte-corps" method="post"
       action="{% if route %}/routes/{{ route.id }}{% else %}/routes{% endif %}">
 
-  <div class="ligne">
-    <div>
-      <label for="label">Libellé</label>
-      <input type="text" id="label" name="label" required
-             value="{{ route.label if route else '' }}" placeholder="Paris au printemps">
-    </div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ("label", "Libellé", valeur=route.label if route else "",
+                placeholder="Paris au printemps", requis=true) }}
+  {% endcall %}
 
-  <div class="ligne">
-    <div>
-      <label for="origins">Origines</label>
-      <input class="aeroport" type="text" id="origins" name="origins" required placeholder="YUL, YQB"
-             value="{{ route.origins | join(', ') if route else 'YUL, YQB' }}">
-    </div>
-    <div>
-      <label for="destinations">Destinations</label>
-      <input class="aeroport" type="text" id="destinations" name="destinations" required
-             placeholder="CDG, ORY"
-             value="{{ route.destinations | join(', ') if route else '' }}">
-    </div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ_aeroport("origins", "Origines", multiple=true, requis=true,
+                         placeholder="Montréal, Québec…",
+                         valeur=route.origins | join(', ') if route else 'YUL, YQB') }}
+    {{ ui.champ_aeroport("destinations", "Destinations", multiple=true, requis=true,
+                         placeholder="Paris, Lisbonne…",
+                         valeur=route.destinations | join(', ') if route else '') }}
+  {% endcall %}
 
-  <div class="ligne">
-    <div>
-      <label for="date_policy">Politique de dates</label>
-      <select id="date_policy" name="date_policy"
-              hx-get="/routes/policy-fields" hx-target="#champs-politique" hx-trigger="change"
-              hx-include="closest form">
-        {% for valeur, libelle in [('fixed', 'Dates fixes'), ('window', 'Fenêtre de mois'),
-                                   ('flexible', 'Totalement souple')] %}
-          <option value="{{ valeur }}"
-            {% if date_policy == valeur %}selected{% endif %}>{{ libelle }}</option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ_select("date_policy", "Politique de dates",
+                       [('fixed', 'Dates fixes'), ('window', 'Fenêtre de mois'),
+                        ('flexible', 'Totalement souple')],
+                       valeur=date_policy,
+                       extra='hx-get="/routes/policy-fields" hx-target="#champs-politique"
+                              hx-trigger="change" hx-include="closest form" hx-swap="innerHTML"') }}
+  {% endcall %}
 
   <div id="champs-politique">
     {% include "policy_fields.html.j2" %}
   </div>
 
-  <div class="ligne">
-    <div>
-      <label for="trip_type">Type</label>
-      <select id="trip_type" name="trip_type">
-        <option value="round_trip"
-          {% if route and route.trip_type == 'round_trip' %}selected{% endif %}>Aller-retour</option>
-        <option value="one_way"
-          {% if route and route.trip_type == 'one_way' %}selected{% endif %}>Aller simple</option>
-      </select>
-    </div>
-    <div>
-      <label for="passengers">Passagers</label>
-      <input type="number" id="passengers" name="passengers" min="1"
-             value="{{ route.passengers if route else 1 }}">
-    </div>
-    <div>
-      <label for="max_stops">Escales maximales</label>
-      <input type="number" id="max_stops" name="max_stops" min="0" placeholder="sans limite"
-             value="{{ route.max_stops if route and route.max_stops is not none else '' }}">
-    </div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ_select("trip_type", "Type",
+                       [('round_trip', 'Aller-retour'), ('one_way', 'Aller simple')],
+                       valeur=route.trip_type if route else 'round_trip') }}
+    {{ ui.champ("passengers", "Passagers", type="number", min=1,
+                valeur=route.passengers if route else 1) }}
+    {{ ui.champ("max_stops", "Escales maximales", type="number", min=0, placeholder="sans limite",
+                valeur=route.max_stops if route and route.max_stops is not none else '') }}
+  {% endcall %}
 
-  <div class="ligne">
-    <div>
-      <label for="target_price_cad">Prix cible (CAD)</label>
-      <input type="number" id="target_price_cad" name="target_price_cad" min="1" placeholder="aucun"
-             value="{{ route.target_price_cad if route and route.target_price_cad else '' }}">
-    </div>
-    <div>
-      <label for="exception_threshold">Seuil d'aberration</label>
-      <input type="number" id="exception_threshold" name="exception_threshold"
-             step="0.05" min="0.05" max="0.95"
-             value="{{ route.exception_threshold if route else 0.40 }}">
-    </div>
-  </div>
+  {% call ui.rangee() %}
+    {{ ui.champ("target_price_cad", "Prix cible (CAD)", type="number", min=1, placeholder="aucun",
+                valeur=route.target_price_cad if route and route.target_price_cad else '') }}
+    {{ ui.champ("exception_threshold", "Seuil d'aberration", type="number",
+                min=0.05, max=0.95, pas=0.05,
+                valeur=route.exception_threshold if route else 0.40) }}
+  {% endcall %}
 
   <div class="actions">
-    <button class="bouton" type="submit">
-      {% if route %}Enregistrer{% else %}Créer le trajet{% endif %}
-    </button>
-    <a class="bouton bouton-discret" href="/routes">Annuler</a>
+    {{ ui.bouton("Enregistrer" if route else "Créer le trajet") }}
+    {{ ui.bouton("Annuler", href="/routes", ton="discret") }}
   </div>
 </form>
 

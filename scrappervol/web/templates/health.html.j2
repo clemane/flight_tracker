@@ -1,4 +1,5 @@
 {% extends "base.html.j2" %}
+{% import "ui.html.j2" as ui %}
 {% block titre %}Santé — ScrapperVol{% endblock %}
 {% block contenu %}
 
@@ -22,7 +23,7 @@ panne silencieuse qu'il faut voir venir.</p>
         <td>
           <strong>{{ s.provider }}</strong>
           {% if s.is_stale %}
-            <span class="badge badge-rouge">muette</span>
+            {{ ui.badge("muette", ton="rouge") }}
           {% endif %}
         </td>
         <td data-dernier-succes>

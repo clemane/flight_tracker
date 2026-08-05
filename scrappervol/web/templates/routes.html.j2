@@ -1,17 +1,16 @@
 {% extends "base.html.j2" %}
+{% import "ui.html.j2" as ui %}
 {% block titre %}Trajets — ScrapperVol{% endblock %}
 {% block contenu %}
 
 <div class="section-entete">
   <h1>Trajets</h1>
-  <span class="a-droite"><a class="bouton" href="/routes/new">＋ Nouveau trajet</a></span>
+  <span class="a-droite">{{ ui.bouton("＋ Nouveau trajet", href="/routes/new") }}</span>
 </div>
 
 {% if not routes %}
-  <div class="vide" data-aucun-trajet>
-    <p>Aucun trajet pour l'instant.</p>
-    <a class="bouton" href="/routes/new">Créer un trajet</a>
-  </div>
+  {{ ui.vide("Aucun trajet pour l'instant.", crochet="aucun-trajet") }}
+  <p class="centre">{{ ui.bouton("Créer un trajet", href="/routes/new") }}</p>
 {% else %}
   <div class="grille">
     {% for route in routes %}
