@@ -4379,6 +4379,15 @@ prix aller-retour total. La couverture n'en souffre presque pas : la capture ré
 montre que Google Flights renvoie déjà les vols Air Transat (TS à 1 134 CAD sur YUL→CDG), avec un
 prix agrégé et comparable.
 
+**Précision d'usage, donnée par l'utilisateur le 5 août 2026 :** ScrapperVol surveille des
+voyages de **vacances**, donc des aller-retours. Un prix de vol aller seul n'est pas une donnée
+imparfaite qu'on pourrait exploiter faute de mieux — elle ne répond pas à la question posée. Ce
+n'est donc pas seulement l'incomparabilité entre sources qui disqualifie cette page, c'est le fait
+qu'elle ne mesure pas ce qu'on cherche.
+
+Cette précision durcit le critère de réussite de toute source à venir : il porte désormais sur la
+**nature** du prix obtenu — aller-retour total — et pas seulement sur sa présence et sa stabilité.
+
 À reprendre à la **tâche 20** (mise en service) si la source est un jour réactivée.
 
 ## Tâche 12 : essai technique puis source Air Canada

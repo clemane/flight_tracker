@@ -35,17 +35,22 @@ class Settings(BaseSettings):
     request_pause_min_s: int = 5
     request_pause_max_s: int = 20
 
-    # `transat` est volontairement absent : la page de résultats pilotée à la tâche 11 n'affiche
-    # que le prix du vol aller (« à partir de »), pas un total aller-retour. Comme `daily_low` est
-    # indexé par (route_id, day) sans le provider et ne garde que le prix le plus bas, activer
-    # cette source ferait d'un prix aller-seul le plus bas permanent du trajet : la médiane de
-    # référence s'effondrerait et aucune aubaine aller-retour ne serait plus jamais détectée.
-    # Le code de la source reste en place, prêt à servir si le parcours est un jour poussé jusqu'au
-    # prix total. Google Flights renvoie déjà les vols Air Transat, à un prix comparable.
-    enabled_providers: Annotated[list[str], NoDecode] = [
-        "google_flights",
-        "air_canada",
-    ]
+    # Une seule source active, et c'est délibéré.
+    #
+    # `transat` : la page pilotée à la tâche 11 n'affiche que le prix du vol aller (« à partir
+    # de »), pas un total aller-retour. Comme `daily_low` est indexé par (route_id, day) sans le
+    # provider et ne conserve que le prix le plus bas, un prix aller-seul deviendrait le plus bas
+    # permanent du trajet : médiane de référence effondrée, aubaines aller-retour indétectables,
+    # le tout sans qu'aucun voyant ne passe au rouge. Le code de la source reste en place.
+    #
+    # `air_canada` : la source n'est pas encore écrite. Elle ne sera ajoutée ici que si l'essai de
+    # la tâche 12 obtient un prix aller-retour total — l'usage visé est le voyage de vacances, où
+    # un prix aller-seul n'est pas une donnée dégradée mais une donnée hors sujet.
+    #
+    # Google Flights renvoie déjà les vols Air Transat et Air Canada, à un prix aller-retour
+    # agrégé donc comparable — c'est cette comparabilité, pas le nombre de sources, qui fait la
+    # valeur de la détection.
+    enabled_providers: Annotated[list[str], NoDecode] = ["google_flights"]
 
     @field_validator("enabled_providers", mode="before")
     @classmethod
