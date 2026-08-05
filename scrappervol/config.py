@@ -43,9 +43,11 @@ class Settings(BaseSettings):
     # permanent du trajet : médiane de référence effondrée, aubaines aller-retour indétectables,
     # le tout sans qu'aucun voyant ne passe au rouge. Le code de la source reste en place.
     #
-    # `air_canada` : la source n'est pas encore écrite. Elle ne sera ajoutée ici que si l'essai de
-    # la tâche 12 obtient un prix aller-retour total — l'usage visé est le voyage de vacances, où
-    # un prix aller-seul n'est pas une donnée dégradée mais une donnée hors sujet.
+    # `air_canada` : source définitivement écartée. L'essai de la tâche 12 a piloté le formulaire
+    # sans peine, mais chaque soumission retombait sur une page d'erreur (BKRW-DBS-999) produite
+    # côté client, et l'URL de résultats directe renvoie un 403 Akamai : aucun prix n'a pu être
+    # relevé. Le parcours est protégé contre l'automatisation, le contourner est hors sujet.
+    # Compte rendu : docs/superpowers/notes/2026-08-05-air-canada-abandon.md
     #
     # Google Flights renvoie déjà les vols Air Transat et Air Canada, à un prix aller-retour
     # agrégé donc comparable — c'est cette comparabilité, pas le nombre de sources, qui fait la

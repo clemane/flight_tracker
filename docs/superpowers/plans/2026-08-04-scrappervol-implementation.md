@@ -5138,6 +5138,7 @@ def faux_mailer():
 `tests/notify/test_mailer.py` :
 
 ```python
+import smtplib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5195,7 +5196,11 @@ def test_le_smtp_mailer_ouvre_une_session_chiffree_et_envoie():
     session.send_message.assert_called_once()
 
 
-def test_le_smtp_mailer_nappelle_pas_login_sans_identifiants():
+def test_le_smtp_mailer_envoie_sans_sauthentifier_quand_il_ny_a_pas_didentifiants():
+    """`login.assert_not_called()` seul est une assertion purement négative : elle passerait
+    aussi si *rien* ne se produisait. Elle laisserait notamment passer un `send_message`
+    indenté par mégarde dans le `if` des identifiants — sur un relais local sans
+    authentification, plus aucun courriel ne partirait et la suite resterait verte."""
     reglages = Settings(smtp_host="smtp.example.com", smtp_user="", smtp_password="")
     session = MagicMock()
 
@@ -5204,6 +5209,26 @@ def test_le_smtp_mailer_nappelle_pas_login_sans_identifiants():
         SmtpMailer(reglages).send(COURRIEL, "vers@example.com")
 
     session.login.assert_not_called()
+    session.send_message.assert_called_once()
+
+
+def test_un_serveur_sans_starttls_fait_echouer_lenvoi_plutot_que_de_livrer_en_clair():
+    """`starttls()` est appelé sans condition : si le serveur ne le supporte pas, l'envoi doit
+    échouer plutôt que de transmettre le mot de passe en clair. Ce test verrouille ce choix pour
+    qu'il ne soit pas « réparé » plus tard par quelqu'un qui prendrait l'échec pour un bogue."""
+    reglages = Settings(
+        smtp_host="smtp.example.com", smtp_user="utilisateur", smtp_password="secret"
+    )
+    session = MagicMock()
+    session.starttls.side_effect = smtplib.SMTPNotSupportedError("STARTTLS non supporté")
+
+    with patch("scrappervol.notify.mailer.smtplib.SMTP") as smtp:
+        smtp.return_value.__enter__.return_value = session
+        with pytest.raises(RuntimeError, match="envoi SMTP"):
+            SmtpMailer(reglages).send(COURRIEL, "vers@example.com")
+
+    session.login.assert_not_called()
+    session.send_message.assert_not_called()
 
 
 def test_un_echec_denvoi_leve_une_erreur_explicite():
@@ -5291,7 +5316,8 @@ def build_mailer(settings: Settings) -> Mailer:
 ./dev lint
 ```
 
-Attendu : 21 tests passés (14 de la tâche 13, 7 ici).
+Attendu : 30 tests passés dans `tests/notify/` (22 de la tâche 13, 8 ici). La tâche 13 a livré
+plus de tests que ce brief ne le prévoyait à l'origine : ce n'est pas une régression.
 
 - [ ] **Étape 6 : committer**
 
