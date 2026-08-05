@@ -6,6 +6,9 @@ from scrappervol.detection.stats import median, modified_z
 
 SEUIL_Z_MODIFIE = -3.5
 
+# Au-delà de ce silence, une source est considérée hors service et signalée en tête du digest.
+SEUIL_SOURCE_MUETTE_H = 48
+
 
 @dataclass(frozen=True, slots=True)
 class PriceContext:
@@ -69,8 +72,11 @@ def is_find(
     target_price_cad: int | None,
     find_threshold: float,
     min_history_days: int,
+    credibility_floor: int,
 ) -> bool:
     """Trouvaille au sens du §8 : sous la cible absolue, ou nettement sous la médiane."""
+    if price_cad <= credibility_floor:
+        return False
     if target_price_cad is not None and price_cad <= target_price_cad:
         return True
     if not context.has_significant_history(min_history_days):

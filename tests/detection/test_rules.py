@@ -164,6 +164,7 @@ def test_trouvaille_quand_le_prix_passe_sous_la_cible():
             target_price_cad=500,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is True
     )
@@ -179,6 +180,7 @@ def test_trouvaille_sous_la_cible_meme_sans_historique_significatif():
             target_price_cad=500,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is True
     )
@@ -192,6 +194,7 @@ def test_trouvaille_quand_le_prix_est_quinze_pourcent_sous_la_mediane():
             target_price_cad=None,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is True
     )
@@ -205,6 +208,7 @@ def test_pas_de_trouvaille_statistique_sans_historique_significatif():
             target_price_cad=None,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is False
     )
@@ -218,6 +222,42 @@ def test_prix_ordinaire_nest_pas_une_trouvaille():
             target_price_cad=None,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
+        )
+        is False
+    )
+
+
+def test_trouvaille_au_plancher_de_credibilite_exact_est_refusee():
+    """Frontière du garde ajouté à `is_find`, symétrique de celle déjà vérifiée pour
+    `is_exception` dans `test_les_bornes_inclusives_se_jouent_bien_a_legalite`. Sans ce test,
+    rendre la comparaison stricte (`< credibility_floor` au lieu de `<=`) laissait la suite
+    verte : à `price_cad == credibility_floor`, la cible à 500 aurait suffi à déclarer une
+    trouvaille malgré un prix aberrant."""
+    assert (
+        is_find(
+            price_cad=50,
+            context=_contexte([600] * 20),
+            target_price_cad=500,
+            find_threshold=0.15,
+            min_history_days=14,
+            credibility_floor=50,
+        )
+        is False
+    )
+
+
+def test_un_prix_incroyablement_bas_nest_pas_une_trouvaille():
+    """Symétrique de la garde d'`is_exception`. Placée avant l'examen de la cible, sans quoi un
+    prix aberrant passerait sous n'importe quelle cible et deviendrait la trouvaille du jour."""
+    assert (
+        is_find(
+            price_cad=12,
+            context=PriceContext(daily_lows=[600] * 20),
+            target_price_cad=500,
+            find_threshold=0.15,
+            min_history_days=14,
+            credibility_floor=50,
         )
         is False
     )
@@ -294,6 +334,7 @@ def test_les_bornes_inclusives_se_jouent_bien_a_legalite():
             target_price_cad=500,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is True
     )
@@ -306,6 +347,7 @@ def test_les_bornes_inclusives_se_jouent_bien_a_legalite():
             target_price_cad=None,
             find_threshold=0.15,
             min_history_days=14,
+            credibility_floor=50,
         )
         is True
     )
