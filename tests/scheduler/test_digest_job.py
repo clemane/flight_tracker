@@ -92,6 +92,8 @@ def test_le_bloc_porte_le_plus_bas_du_jour_et_son_contexte(session, reglages):
     assert round(bloc.gap_vs_median, 2) == 0.20
     assert bloc.gap_vs_yesterday == -120
     assert bloc.history_building is False
+    # Sans le lien, le courriel annonce une aubaine que rien ne permet d'aller réserver.
+    assert bloc.deep_link == "https://example.com"
 
 
 def test_un_trajet_sans_historique_significatif_est_marque_en_construction(session, reglages):
@@ -197,6 +199,32 @@ def test_letat_des_sources_est_toujours_present(session, reglages):
     # tests suivants ne vérifient que le cas muet. Le digest crierait à la panne chaque jour.
     assert all(p.is_stale is False for p in donnees.providers)
     assert donnees.has_stale_provider is False
+
+
+def test_le_digest_porte_la_date_du_jour(session, reglages):
+    _trajet(session)
+
+    assert build_digest(session, reglages, MAINTENANT).day == AUJOURDHUI
+
+
+def test_letat_dune_source_rapporte_ses_echecs_consecutifs(session, reglages):
+    """Le compteur d'échecs est un signal de panne à part entière : une source peut avoir réussi
+    il y a trois heures — donc ne pas être muette — tout en échouant à chaque passage depuis.
+    Figé à zéro, le digest annoncerait une collecte saine pendant que plus rien ne rentre."""
+    _trajet(session)
+    session.add(
+        ProviderHealth(
+            provider="google_flights",
+            last_success_at=MAINTENANT - timedelta(hours=3),
+            consecutive_failures=4,
+        )
+    )
+    session.commit()
+
+    (statut,) = build_digest(session, reglages, MAINTENANT).providers
+
+    assert statut.consecutive_failures == 4
+    assert statut.is_stale is False
 
 
 def test_une_source_muette_depuis_plus_de_48h_est_marquee(session, reglages):
