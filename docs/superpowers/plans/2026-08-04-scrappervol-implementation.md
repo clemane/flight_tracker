@@ -8117,7 +8117,8 @@ Ajouter au service `app` de `docker-compose.yml` :
 ./dev lint
 ```
 
-Attendu : la suite complète au vert, soit environ 200 tests, tous les tests `live` désélectionnés.
+Attendu : la suite complète au vert, tous les tests marqués `live` désélectionnés. Le compte exact
+est donné à la fin de chaque tâche ; ne pas le figer ici, où il serait périmé dès la tâche suivante.
 
 - [ ] **Étape 6 : écrire le `README.md`**
 
@@ -8154,9 +8155,21 @@ machine : l'application n'a pas d'authentification, et n'a pas vocation à être
 
 ## Fonctionnement
 
-Trois sources sont interrogées à des rythmes distincts (Google Flights toutes les 4 h, Air Transat
-toutes les 6 h, Air Canada toutes les 8 h). Chaque passage relève les prix des trajets actifs, met à
-jour le plus bas du jour et compare à la médiane des 90 derniers jours.
+Une seule source est active par défaut : **Google Flights**, interrogée toutes les 4 h. Chaque
+passage relève les prix des trajets actifs, met à jour le plus bas du jour et compare à la médiane
+des 90 derniers jours.
+
+Le code en contient deux autres, désactivées, et il faut savoir pourquoi avant de les rallumer :
+
+| Source | État | Raison |
+|---|---|---|
+| Google Flights | active, 4 h | — |
+| Air Transat | présente mais retirée de `ENABLED_PROVIDERS` | elle ne publie qu'un prix d'**aller simple**. Ce prix, environ moitié moindre qu'un aller-retour, deviendrait le plus bas du trajet et effondrerait la médiane de référence : plus aucune aubaine ne serait jamais détectée, et le tableau de bord resterait vert. La rallumer suppose d'abord de relever un prix d'aller-retour complet. |
+| Air Canada | abandonnée | le site refuse toute soumission automatisée (`BKRW-DBS-999`, puis 403 Akamai sur l'URL directe). Compte rendu dans `docs/superpowers/notes/2026-08-05-air-canada-abandon.md`. |
+
+Une seule source signifie qu'une panne de Google Flights arrête toute la collecte. C'est le risque
+assumé de cette version ; la page Santé et le digest quotidien existent précisément pour qu'il ne
+passe pas inaperçu.
 
 Un courriel de synthèse part chaque jour à 18 h, heure de Montréal, même les jours sans rien de
 notable. Un courriel immédiat part si un prix descend à plus de 40 % sous la médiane — sous réserve
@@ -8165,15 +8178,30 @@ alertes de parsing.
 
 ## Quand une source cesse de produire
 
-C'est le scénario attendu : les sites changent leur HTML. La page Santé et le pied du digest quotidien
-le signalent. Pour réparer :
+C'est le scénario attendu. La page Santé et le pied du digest quotidien le signalent : une source
+sans succès depuis plus de 48 h y apparaît en rouge.
 
-1. `./dev shell` puis `python scripts/capture_fixture.py <source>` pour recapturer une réponse réelle.
-2. Comparer avec l'ancienne fixture, identifier le champ qui a changé.
-3. Corriger le sélecteur dans `scrappervol/providers/<source>.py`.
-4. `./dev test tests/providers/` — le test sur fixture désigne précisément ce qui ne passe plus.
+La marche à suivre diffère selon la source, car elles ne cassent pas de la même façon.
 
-La dernière réponse HTML de chaque source est également conservée dans `data/debug/`.
+**Google Flights** ne s'analyse pas par sélecteurs : la lecture passe par la bibliothèque
+`fast-flights`. Une panne vient donc soit de l'API de la bibliothèque, soit du protocole distant.
+
+1. `./dev shell` puis `python scripts/capture_fixture.py google_flights` pour rejouer un appel réel.
+2. Si l'appel lui-même échoue, comparer la signature de `create_query` et `get_flights` avec celle
+   qu'attend `scrappervol/providers/google_flights.py` : c'est déjà arrivé, la version 3 ayant
+   changé l'API sans prévenir.
+3. `./dev test tests/providers/test_google_flights.py` rejoue la fixture enregistrée et désigne le
+   champ qui ne se lit plus.
+
+**Sources Playwright** (Air Transat, et toute source ajoutée sur ce socle) : celles-là cassent bien
+par changement de HTML.
+
+1. `python scripts/capture_fixture.py transat` pour recapturer la page.
+2. Comparer avec l'ancienne fixture, identifier le sélecteur qui ne mord plus.
+3. Corriger dans `scrappervol/providers/<source>.py`, puis `./dev test tests/providers/`.
+
+Pour ces seules sources, la dernière page reçue est conservée dans `data/debug/` — Google Flights ne
+passant pas par un navigateur, elle n'y dépose rien.
 ```
 
 - [ ] **Étape 7 : essai de bout en bout**
