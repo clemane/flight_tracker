@@ -2,9 +2,9 @@
 
 {% if date_policy == 'fixed' %}
   {% call ui.rangee() %}
-    {{ ui.champ("depart", "Départ", type="date", requis=true, valeur=params.get('depart', '')) }}
-    {{ ui.champ("retour", "Retour", type="date", valeur=params.get('retour', ''),
-                aide="(obligatoire pour un aller-retour)") }}
+    {{ ui.champ_plage_dates("depart", "Départ", nom_fin="retour", etiquette_fin="Retour",
+                            valeur_debut=params.get('depart', ''),
+                            valeur_fin=params.get('retour', '')) }}
     {{ ui.champ("flex_days", "Souplesse (jours)", type="number", min=0, max=14,
                 valeur=params.get('flex_days', 0)) }}
   {% endcall %}

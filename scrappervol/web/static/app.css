@@ -780,3 +780,161 @@ tr[data-muet] td {
     animation-duration: 3s;
   }
 }
+
+/* --------------------------------------------------------------- calendrier */
+
+/* `contents` retire la boîte d'enveloppe du flux : les deux champs de dates redeviennent des
+   enfants directs de la grille ou de la rangée, et gardent l'alignement des autres champs. Le
+   panneau, lui, se positionne par rapport au formulaire — d'où le `relative` posé plus bas. */
+.plage-dates {
+  display: contents;
+}
+
+.recherche-grille,
+.ligne {
+  position: relative;
+}
+
+.date-visible {
+  cursor: pointer;
+}
+
+.champ-date-ouvert .date-visible,
+.date-visible:focus {
+  border-color: var(--accent);
+}
+
+.calendrier:not([hidden]) {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  padding: 14px 16px 12px;
+  background: var(--fond-carte);
+  border: 1px solid var(--bord);
+  border-radius: var(--r-m);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.cal-titre {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+.cal-fleche {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--bord);
+  border-radius: var(--r-s);
+  background: var(--fond);
+  color: var(--texte);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cal-fleche:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cal-mois {
+  display: flex;
+  gap: 22px;
+}
+
+/* Un seul mois tient à l'écran sur un téléphone ; le second y forcerait un défilement latéral. */
+@media (max-width: 720px) {
+  .cal-mois > :last-child {
+    display: none;
+  }
+}
+
+/* Les tableaux de données du site portent un cadre, un fond et des filets ; une grille de dates
+   n'en veut aucun. Tout est repris à zéro plutôt que corrigé propriété par propriété. */
+.cal-table {
+  width: auto;
+  border: 0;
+  border-collapse: collapse;
+  background: none;
+}
+
+.cal-table th,
+.cal-table td {
+  border: 0;
+  background: none;
+  text-align: center;
+}
+
+.cal-table th {
+  padding: 4px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--texte-faible);
+  text-transform: uppercase;
+}
+
+.cal-table td {
+  padding: 1px;
+}
+
+.cal-jour {
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-s);
+  background: transparent;
+  color: var(--texte);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cal-jour:hover:not(:disabled) {
+  background: var(--accent-doux);
+  color: var(--accent);
+}
+
+.cal-jour-hors {
+  color: var(--texte-faible);
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* La plage retenue se lit d'un coup d'œil : bornes pleines, entre-deux teinté. */
+.cal-jour-entre {
+  background: var(--accent-doux);
+  border-radius: 0;
+}
+
+.cal-jour-debut,
+.cal-jour-fin,
+.cal-jour-debut:hover,
+.cal-jour-fin:hover {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cal-aide {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.note-prix {
+  margin: 0 0 12px;
+  font-size: 12px;
+}

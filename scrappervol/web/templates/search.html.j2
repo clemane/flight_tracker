@@ -11,8 +11,8 @@
   <div class="recherche-grille">
     {{ ui.champ_aeroport("origin", "Départ", placeholder="Montréal", requis=true) }}
     {{ ui.champ_aeroport("destination", "Arrivée", placeholder="Cancún", requis=true) }}
-    {{ ui.champ("depart", "Aller", type="date", min=aujourdhui, requis=true) }}
-    {{ ui.champ("retour", "Retour", type="date", min=aujourdhui, requis=true) }}
+    {{ ui.champ_plage_dates("depart", "Aller", nom_fin="retour", etiquette_fin="Retour",
+                            min=aujourdhui) }}
     {{ ui.champ("passengers", "Voyageurs", type="number", valeur=1, min=1, max=9) }}
     <div class="champ champ-action">
       <button class="bouton" type="submit">

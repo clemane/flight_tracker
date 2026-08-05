@@ -68,6 +68,50 @@
   </div>
 {% endmacro %}
 
+{# Couple de dates aller/retour, choisies dans un même calendrier.
+
+   Remplace `<input type="date">`, dont le sélecteur appartient au navigateur : impossible à mettre
+   au ton du reste, et différent sur chaque machine. Un aller-retour se choisit d'ailleurs mal en
+   deux sélecteurs séparés, qui ne montrent jamais la durée du séjour.
+
+   Chaque date garde un champ caché au format ISO sous son nom d'origine : le serveur reçoit
+   exactement ce qu'il recevait avec le sélecteur natif. Le champ visible, en lecture seule, ne
+   porte pas de `name` et n'est jamais soumis.
+
+   `nom_fin` à `none` donne un calendrier à une seule date.
+
+   Aucun `required` : un champ en lecture seule est écarté de la validation native du navigateur
+   (règle HTML), l'attribut n'aurait donc aucun effet. C'est le serveur qui refuse une date
+   manquante, comme il le fait déjà pour les autres champs. #}
+{% macro champ_plage_dates(nom_debut, etiquette_debut, nom_fin=none, etiquette_fin="",
+                            valeur_debut="", valeur_fin="", min=none) %}
+  <div class="plage-dates" data-plage-dates{% if min %} data-min="{{ min }}"{% endif %}>
+    <div class="champ champ-date">
+      <label for="{{ nom_debut }}-visible">{{ etiquette_debut }}</label>
+      <input class="date-visible" type="text" id="{{ nom_debut }}-visible"
+             readonly autocomplete="off" placeholder="Choisir une date"
+             data-role="debut-visible" data-date-visible="{{ nom_debut }}">
+      <input type="hidden" id="{{ nom_debut }}" name="{{ nom_debut }}"
+             value="{{ valeur_debut or '' }}" data-role="debut-valeur">
+    </div>
+
+    {% if nom_fin %}
+      <div class="champ champ-date">
+        <label for="{{ nom_fin }}-visible">{{ etiquette_fin }}</label>
+        <input class="date-visible" type="text" id="{{ nom_fin }}-visible"
+               readonly autocomplete="off" placeholder="Choisir une date"
+               data-role="fin-visible" data-date-visible="{{ nom_fin }}">
+        <input type="hidden" id="{{ nom_fin }}" name="{{ nom_fin }}"
+               value="{{ valeur_fin or '' }}" data-role="fin-valeur">
+      </div>
+    {% endif %}
+
+    {# Sans JavaScript le panneau reste vide et les champs cachés gardent leur valeur : le
+       formulaire reste soumissible, il n'est simplement plus modifiable. #}
+    <div class="calendrier" data-role="panneau" hidden></div>
+  </div>
+{% endmacro %}
+
 {# Liste déroulante. `options` est une suite de couples (valeur, libellé). #}
 {% macro champ_select(nom, etiquette, options, valeur="", extra="") %}
   <div class="champ">

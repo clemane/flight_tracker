@@ -105,7 +105,16 @@ def test_chaque_champ_porte_une_etiquette_liee(client: TestClient, page: str):
     """Vérifié dans les deux sens : un `for` qui ne désigne aucun champ laisse le libellé muet,
     et un champ sans `for` qui le vise n'a plus de libellé du tout pour un lecteur d'écran."""
     corps = client.get(page).text
-    identifiants = set(re.findall(r'<(?:input|select)[^>]*\bid="([^"]+)"', corps))
+    # Les champs cachés sont écartés : ils portent la valeur soumise pour le calendrier, ne sont
+    # jamais perçus ni parcourus au clavier, et une étiquette pour eux serait annoncée en double.
+    balises = re.findall(r"<(?:input|select)[^>]*>", corps)
+    identifiants = {
+        m.group(1)
+        for b in balises
+        if 'type="hidden"' not in b
+        for m in [re.search(r'\bid="([^"]+)"', b)]
+        if m
+    }
     vises = set(re.findall(r'<label[^>]*\bfor="([^"]+)"', corps))
 
     for cible in vises:
@@ -122,3 +131,54 @@ def test_le_kit_est_bien_la_source_unique_des_champs():
         p for p in gabarits_de_page() if 'import "ui.html.j2"' in p.read_text(encoding="utf-8")
     ]
     assert len(utilisateurs) >= 5
+
+
+# ------------------------------------------------------------- calendrier
+
+
+def test_le_calendrier_soumet_des_dates_iso_sous_leur_nom_dorigine():
+    """Le serveur n'a rien appris du changement de saisie : il attend toujours `depart` et
+    `retour` au format ISO. Le champ visible, lui, ne porte pas de `name` et n'est pas soumis."""
+    html = rendre(
+        '{{ ui.champ_plage_dates("depart", "Aller", nom_fin="retour", etiquette_fin="Retour",'
+        '                        valeur_debut="2026-08-20", valeur_fin="2026-08-21") }}'
+    )
+    assert re.search(r'<input type="hidden" id="depart" name="depart"\s+value="2026-08-20"', html)
+    assert re.search(r'<input type="hidden" id="retour" name="retour"\s+value="2026-08-21"', html)
+
+    visibles = re.findall(r"<input[^>]*date-visible[^>]*>", html)
+    assert len(visibles) == 2
+    for champ in visibles:
+        assert "name=" not in champ, "le champ visible serait soumis en plus de la valeur ISO"
+        assert "readonly" in champ
+
+
+def test_le_calendrier_accepte_une_date_seule():
+    """Sans `nom_fin`, il ne reste qu'une date : le panneau se ferme au premier clic."""
+    html = rendre('{{ ui.champ_plage_dates("depart", "Départ") }}')
+    assert html.count('type="hidden"') == 1
+    assert "fin-valeur" not in html
+
+
+def test_le_calendrier_transmet_sa_borne_inferieure():
+    """`min` interdit les dates passées ; sans lui, on peut surveiller un trajet déjà parti."""
+    html = rendre('{{ ui.champ_plage_dates("depart", "Aller", min="2026-08-05") }}')
+    assert 'data-min="2026-08-05"' in html
+    assert "data-min" not in rendre('{{ ui.champ_plage_dates("depart", "Aller") }}')
+
+
+@pytest.mark.parametrize("page", ["/", "/routes/new"])
+def test_plus_aucun_selecteur_de_date_natif(client: TestClient, page: str):
+    """Le sélecteur natif est celui du navigateur : ni stylable, ni identique d'une machine à
+    l'autre. S'il revient quelque part, c'est que la macro a été contournée."""
+    corps = client.get(page).text
+    assert 'type="date"' not in corps
+    assert "data-plage-dates" in corps
+
+
+def test_le_panneau_du_calendrier_part_replie():
+    """Sans `hidden`, une boîte vide flotte sous le formulaire dès l'ouverture de la page : le
+    panneau n'est rempli qu'au premier clic, il n'y a rien à montrer avant."""
+    html = rendre('{{ ui.champ_plage_dates("depart", "Aller", nom_fin="retour") }}')
+    panneau = re.search(r'<div class="calendrier"[^>]*>', html).group(0)
+    assert "hidden" in panneau
