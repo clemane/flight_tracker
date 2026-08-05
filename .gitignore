@@ -1,5 +1,7 @@
 .env
-data/
+# Ancré à la racine : sans la barre initiale, le motif masquerait aussi `scrappervol/data/`,
+# où vit la base d'aéroports embarquée.
+/data/
 __pycache__/
 *.py[cod]
 .venv/

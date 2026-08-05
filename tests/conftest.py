@@ -4,6 +4,12 @@ from sqlmodel.pool import StaticPool
 
 from scrappervol.core.types import FlightOffer, SearchQuery
 
+# Les tables ne s'inscrivent dans `SQLModel.metadata` qu'à l'import de leur module. Sans cet
+# import ici, `create_all` ne crée rien tant qu'aucun fichier de test n'a lui-même importé les
+# modèles — un fichier qui n'en a pas besoin échoue alors sur « no such table », selon l'ordre
+# de collecte.
+from scrappervol.storage import models  # noqa: F401
+
 
 @pytest.fixture
 def engine():
