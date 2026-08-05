@@ -1,0 +1,23 @@
+{% extends "base.html.j2" %}
+{% block titre_page %}Santé des sources{% endblock %}
+{% block contenu %}
+<table>
+  <thead>
+    <tr><th>Source</th><th>Dernier succès</th><th>Échecs consécutifs</th>
+        <th>Offres au dernier passage</th><th>Dernière erreur</th></tr>
+  </thead>
+  <tbody>
+  {% for s in sources %}
+    <tr{% if s.is_stale %} class="muet"{% endif %}>
+      <td>{{ s.provider }}</td>
+      <td>{% if s.last_success_at %}{{ s.last_success_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}jamais{% endif %}</td>
+      <td>{{ s.consecutive_failures }}</td>
+      <td>{{ s.offers_last_run }}</td>
+      <td class="discret">{{ s.last_error or '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="discret">Une source est signalée en rouge si elle n'a rien produit depuis plus de 48 h.</p>
+{% endblock %}
