@@ -8007,6 +8007,35 @@ def test_le_schema_est_cree_au_demarrage_et_les_pages_repondent(tmp_path, monkey
     assert (tmp_path / "test.db").exists()
 
 
+def test_un_trajet_cree_survit_a_la_requete_qui_la_cree(tmp_path, monkeypatch):
+    """Le seul test qui exerce la vraie session de service.
+
+    Partout ailleurs, `get_session` est remplacé par une session de test que rien ne referme
+    entre la requête et l'assertion. Un trajet ajouté sans être validé y resterait visible.
+    Ici la session est celle du service : elle se referme à la fin de la requête, et seul ce
+    qui a été validé subsiste.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SMTP_HOST", "")
+    monkeypatch.setenv("ENABLED_PROVIDERS", "")
+
+    with TestClient(build_application()) as client:
+        client.post(
+            "/routes",
+            data={
+                "label": "Lisbonne en mai",
+                "origins": "YUL",
+                "destinations": "LIS",
+                "date_policy": "fixed",
+                "depart": "2027-05-04",
+                "retour": "2027-05-18",
+            },
+        )
+
+        assert "Lisbonne en mai" in client.get("/routes").text
+
+
 def test_lordonnanceur_demarre_et_sarrete_avec_lapplication(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
@@ -8045,10 +8074,6 @@ from scrappervol.scheduler.app import build_scheduler
 from scrappervol.storage.db import create_engine_for, init_db
 from scrappervol.web.app import create_app
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -8080,6 +8105,14 @@ def build_application() -> FastAPI:
 
 
 def main() -> None:
+    # La configuration du journal appartient au point d'entrée, pas à l'import du module :
+    # placée au niveau module, elle s'appliquerait aussi quand la suite de tests importe
+    # `scrappervol.main`, et reconfigurerait le journal de toute la suite au passage.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    )
+
     import uvicorn
 
     uvicorn.run(build_application(), host="0.0.0.0", port=8080, log_level="info")  # noqa: S104
@@ -8095,7 +8128,8 @@ conteneur rendrait au contraire le service inatteignable depuis l'hôte.
 
 - [ ] **Étape 4 : ajuster le `Dockerfile` et `docker-compose.yml`**
 
-Remplacer la dernière ligne du `Dockerfile` :
+Le `Dockerfile` porte **déjà** la ligne ci-dessous depuis la tâche 1 : la vérifier plutôt que la
+réécrire, et ne rien committer si elle est conforme.
 
 ```dockerfile
 CMD ["python", "-m", "scrappervol.main"]
