@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
+from scrappervol.core.airports import chercher
 from scrappervol.core.types import DatePolicyKind, TripType
 from scrappervol.detection.rules import (
     SEUIL_SOURCE_MUETTE_H,
@@ -146,6 +147,35 @@ def accueil(
         request,
         "search.html.j2",
         {"lignes": lignes, "aujourdhui": maintenant.date(), "page": "recherche"},
+    )
+
+
+@router.get("/airports", response_class=HTMLResponse)
+def suggestions_aeroports(
+    request: Request,
+    q: str = Query(""),
+    champ: str = Query("origin"),
+    multiple: bool = Query(False),
+) -> HTMLResponse:
+    """Suggestions d'aéroports pour un champ de saisie.
+
+    htmx envoie la valeur du champ sous le nom de celui-ci (`origin=montr`), pas sous un nom
+    convenu ; `champ` dit donc lequel des paramètres reçus porte la saisie. `q` reste accepté
+    pour interroger la route directement.
+
+    En deçà de deux caractères, on ne propose rien : la liste serait dominée par les aéroports
+    les plus desservis du monde, sans rapport avec ce que l'utilisateur est en train de taper.
+    """
+    saisie = request.query_params.get(champ) or q
+    if multiple:
+        # Un champ à codes multiples vaut « YUL, YQB, mont » : seul le dernier est en cours de
+        # frappe, les précédents sont déjà choisis et ne doivent pas fausser la recherche.
+        saisie = saisie.rsplit(",", 1)[-1]
+    resultats = chercher(saisie) if len(saisie.strip()) >= 2 else []
+    return templates.TemplateResponse(
+        request,
+        "_suggestions.html.j2",
+        {"aeroports": resultats, "champ": champ, "multiple": multiple},
     )
 
 

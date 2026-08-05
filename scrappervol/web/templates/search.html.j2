@@ -1,4 +1,5 @@
 {% extends "base.html.j2" %}
+{% import "ui.html.j2" as ui %}
 {% block titre %}Recherche — ScrapperVol{% endblock %}
 {% block contenu %}
 
@@ -8,28 +9,11 @@
 <form class="recherche" method="post" action="/search"
       hx-post="/search" hx-target="#resultats" hx-swap="outerHTML">
   <div class="recherche-grille">
-    <div class="champ">
-      <label for="origin">Départ</label>
-      <input class="aeroport" id="origin" name="origin" placeholder="YUL"
-             maxlength="3" required autocomplete="off">
-    </div>
-    <div class="champ">
-      <label for="destination">Arrivée</label>
-      <input class="aeroport" id="destination" name="destination" placeholder="CUN"
-             maxlength="3" required autocomplete="off">
-    </div>
-    <div class="champ">
-      <label for="depart">Aller</label>
-      <input type="date" id="depart" name="depart" min="{{ aujourdhui }}" required>
-    </div>
-    <div class="champ">
-      <label for="retour">Retour</label>
-      <input type="date" id="retour" name="retour" min="{{ aujourdhui }}" required>
-    </div>
-    <div class="champ">
-      <label for="passengers">Voyageurs</label>
-      <input type="number" id="passengers" name="passengers" value="1" min="1" max="9">
-    </div>
+    {{ ui.champ_aeroport("origin", "Départ", placeholder="Montréal", requis=true) }}
+    {{ ui.champ_aeroport("destination", "Arrivée", placeholder="Cancún", requis=true) }}
+    {{ ui.champ("depart", "Aller", type="date", min=aujourdhui, requis=true) }}
+    {{ ui.champ("retour", "Retour", type="date", min=aujourdhui, requis=true) }}
+    {{ ui.champ("passengers", "Voyageurs", type="number", valeur=1, min=1, max=9) }}
     <div class="champ champ-action">
       <button class="bouton" type="submit">
         <span class="chargement"><span class="tourniquet"></span></span>
@@ -42,18 +26,14 @@
 <div id="resultats"></div>
 
 <section class="section">
-  <div class="section-entete">
-    <h2>Trajets surveillés</h2>
-    <span class="compte">{{ lignes | length }}</span>
-    <span class="a-droite"><a class="bouton bouton-second bouton-petit" href="/routes/new">＋ Nouveau trajet</a></span>
-  </div>
+  {% call ui.entete_section("Trajets surveillés", compte=lignes | length) %}
+    {{ ui.bouton("＋ Nouveau trajet", href="/routes/new", ton="second bouton-petit") }}
+  {% endcall %}
 
   {% if not lignes %}
-    <div class="vide" data-aucun-trajet>
-      <p>Rien n'est surveillé pour l'instant.</p>
-      <p class="discret">Lancez une recherche ci-dessus, puis « Surveiller ce trajet » pour en
-      suivre le prix jour après jour.</p>
-    </div>
+    {{ ui.vide("Rien n'est surveillé pour l'instant.",
+               detail="Lancez une recherche ci-dessus, puis « Surveiller ce trajet » pour en suivre le prix jour après jour.",
+               crochet="aucun-trajet") }}
   {% else %}
     <div class="grille">
       {% for ligne in lignes %}
@@ -65,7 +45,7 @@
             <div class="discret">
               {{ ligne.route.origins | join(', ') }} → {{ ligne.route.destinations | join(', ') }}
               {% if not ligne.route.active %}
-                <span class="badge">en pause</span>
+                {{ ui.badge("en pause") }}
               {% endif %}
             </div>
           </div>
@@ -81,17 +61,15 @@
 
           <div>
             {% if ligne.history_building %}
-              <span class="badge badge-ambre" data-historique-en-cours>historique en constitution</span>
+              {{ ui.badge("historique en constitution", ton="ambre", crochet="historique-en-cours") }}
             {% elif ligne.gap_vs_median is not none %}
               <div>
                 {% if ligne.gap_vs_median > 0 %}
-                  <span class="badge badge-vert" data-ecart>
-                    {{ (ligne.gap_vs_median * 100) | round | int }} % sous la médiane
-                  </span>
+                  {{ ui.badge((ligne.gap_vs_median * 100) | round | int ~ " % sous la médiane",
+                              ton="vert", crochet="ecart") }}
                 {% else %}
-                  <span class="badge" data-ecart>
-                    {{ (ligne.gap_vs_median * -100) | round | int }} % au-dessus
-                  </span>
+                  {{ ui.badge((ligne.gap_vs_median * -100) | round | int ~ " % au-dessus",
+                              crochet="ecart") }}
                 {% endif %}
               </div>
               <div class="discret" data-mediane="{{ ligne.median_price | round | int }}">

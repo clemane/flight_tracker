@@ -1,0 +1,22 @@
+{# Liste de suggestions d'aéroports. Injectée sous le champ concerné.
+
+   Chaque proposition est un <button> et non un <div> cliquable : elle est ainsi atteignable au
+   clavier et annoncée comme actionnable, sans avoir à réimplémenter ce qu'un bouton fait déjà. #}
+{% if aeroports %}
+  <ul class="suggestions" role="listbox" data-pour="{{ champ }}">
+    {% for a in aeroports %}
+      <li>
+        <button type="button" class="suggestion" role="option"
+                data-code="{{ a.iata }}" data-cible="{{ champ }}"
+                data-libelle="{{ a.ville_affichee }}, {{ a.pays_affiche }}">
+          <span class="suggestion-code">{{ a.iata }}</span>
+          <span class="suggestion-texte">
+            <span class="suggestion-ville">{{ a.ville_affichee }}</span>
+            <span class="suggestion-detail">
+              {{- a.nom }}{% if a.nom %} · {% endif %}{{ a.pays_affiche }}</span>
+          </span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

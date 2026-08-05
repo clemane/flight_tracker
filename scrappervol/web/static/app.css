@@ -256,10 +256,121 @@ input::placeholder {
   color: var(--texte-faible);
 }
 
+/* Le champ accueille du texte libre pendant la frappe (« montré… ») et un code à trois lettres
+   une fois la suggestion retenue : pas de mise en majuscules forcée, elle défigurerait l'un
+   pour flatter l'autre. */
 .aeroport {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 600;
+  font-weight: 560;
+}
+
+/* ------------------------------------------------- suggestions d'aéroports */
+
+.champ-aeroport {
+  position: relative;
+}
+
+/* La liste se superpose au reste du formulaire ; sans `absolute` elle repousserait les champs
+   voisins vers le bas à chaque frappe. */
+/* La liste peut déborder la largeur du champ : les colonnes du formulaire sont étroites et les
+   noms d'aéroport y seraient tronqués à quelques lettres. */
+.boite-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  min-width: 320px;
+}
+
+@media (max-width: 560px) {
+  .boite-suggestions {
+    min-width: 0;
+  }
+}
+
+.suggestions {
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 302px;
+  overflow-y: auto;
+  background: var(--fond-carte);
+  border: 1px solid var(--bord-fort);
+  border-radius: var(--r-m);
+  box-shadow: var(--ombre-haute);
+}
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-s);
+  background: none;
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion:hover,
+.suggestion-active {
+  background: var(--accent-doux);
+}
+
+.suggestion-code {
+  flex: none;
+  min-width: 42px;
+  padding: 3px 6px;
+  border-radius: var(--r-s);
+  background: var(--fond-creux);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.suggestion-active .suggestion-code,
+.suggestion:hover .suggestion-code {
+  background: var(--accent);
+  color: #fff;
+}
+
+.suggestion-texte {
+  min-width: 0;
+}
+
+.suggestion-ville {
+  display: block;
+  font-size: 14px;
+  font-weight: 560;
+}
+
+/* Le détail est secondaire : il tient sur une ligne, quitte à être tronqué. */
+.suggestion-detail {
+  display: block;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--texte-doux);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Rappelle en clair l'aéroport retenu : « YUL » seul se relit mal. Hors du flux, sinon la ligne
+   apparaîtrait à la sélection et décalerait vers le haut les seuls champs d'aéroport, la grille
+   étant alignée sur le bas. */
+.choix-aeroport {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 2px;
+  right: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* ------------------------------------------------------------------ boutons */
@@ -615,10 +726,13 @@ tr[data-muet] td {
   max-width: 720px;
 }
 
+/* Aligné sur le bas : un libellé qui passe sur deux lignes ne doit pas décaler son champ par
+   rapport à ses voisins de la même rangée. */
 .ligne {
   display: flex;
   gap: 14px;
   margin-bottom: 16px;
+  align-items: end;
 }
 
 .ligne > div {
