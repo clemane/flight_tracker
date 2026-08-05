@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -55,10 +56,33 @@ def test_seules_les_sources_activees_sont_construites(reglages):
     assert [s.name for s in sources] == ["google_flights", "transat"]
 
 
-def test_une_source_inconnue_est_ignoree_sans_lever():
+def test_une_source_inconnue_est_ignoree_sans_lever(caplog):
+    """Une faute de frappe dans ENABLED_PROVIDERS fait disparaître une source sans rien casser.
+    L'avertissement est le seul indice qu'il en manque une : sans lui, la collecte tourne amputée
+    et tout paraît normal."""
+    caplog.set_level(logging.WARNING, logger="scrappervol.scheduler.app")
     reglages = Settings(enabled_providers=["google_flights", "compagnie_imaginaire"])
 
     assert [s.name for s in build_providers(reglages)] == ["google_flights"]
+    assert "compagnie_imaginaire" in caplog.text
+
+
+def test_une_source_dont_la_construction_casse_ne_passe_pas_inapercue(monkeypatch):
+    """build_providers ne rattrape que l'ImportError, et c'est délibéré : si la signature d'une
+    source change sans que le câblage suive, il faut que le démarrage s'arrête là. Élargir ce
+    rattrapage à Exception rendrait la panne silencieuse — l'ordonnanceur démarrerait avec zéro
+    source et le tableau de santé n'aurait rien à signaler."""
+
+    class SourceCassee:
+        def __init__(self, *args, **kwargs):
+            raise TypeError("signature changée")
+
+    monkeypatch.setattr(
+        "scrappervol.providers.transat.TransatProvider", SourceCassee, raising=True
+    )
+
+    with pytest.raises(TypeError):
+        build_providers(Settings(enabled_providers=["transat"]))
 
 
 def test_un_job_de_scan_par_source_activee(engine, reglages, faux_mailer):
@@ -84,6 +108,10 @@ def test_les_passages_sont_decales_aleatoirement(engine, reglages, faux_mailer):
     ordonnanceur = build_scheduler(engine, reglages, faux_mailer)
 
     assert ordonnanceur.get_job("scan:google_flights").trigger.jitter == JITTER_S
+    # Comparer le jitter à sa propre constante ne dit rien de sa valeur : la ramener à quelques
+    # secondes laisserait cette égalité vraie tout en supprimant la dispersion qu'elle existe pour
+    # produire. Dix minutes est le minimum en deçà duquel les passages redeviennent réguliers.
+    assert JITTER_S >= 600
 
 
 def test_un_scan_qui_deborde_nest_jamais_lance_en_double(engine, reglages, faux_mailer):
@@ -138,6 +166,21 @@ def test_la_purge_est_planifiee_a_3h30_locales(engine, reglages, faux_mailer):
     assert "minute='30'" in str(purge.trigger)
 
 
+def test_le_fuseau_des_creneaux_suit_les_reglages(engine, faux_mailer):
+    """Les deux tests précédents attendent America/Toronto, qui est aussi la valeur par défaut :
+    un fuseau écrit en dur dans le câblage les laisserait tous les deux verts. Celui-ci demande un
+    fuseau que rien d'autre ne fournit, pour que le réglage soit vérifié plutôt que supposé."""
+    reglages = Settings(
+        enabled_providers=["google_flights"], digest_hour=18, timezone="Europe/Paris"
+    )
+
+    ordonnanceur = build_scheduler(engine, reglages, faux_mailer)
+
+    assert str(ordonnanceur.timezone) == "Europe/Paris"
+    assert str(ordonnanceur.get_job("digest").trigger.timezone) == "Europe/Paris"
+    assert str(ordonnanceur.get_job("purge").trigger.timezone) == "Europe/Paris"
+
+
 def test_lordonnanceur_nest_pas_demarre_a_la_construction(engine, reglages, faux_mailer):
     ordonnanceur = build_scheduler(engine, reglages, faux_mailer)
 
@@ -158,6 +201,22 @@ def test_le_job_de_scan_enregistre_reellement_les_offres(
     )
 
     assert repo.daily_low_for(session, trajet.id, datetime.now(UTC).date()) is not None
+
+
+def test_le_scan_laisse_une_trace_de_son_passage(
+    engine, session, reglages, faux_mailer, fausse_source, caplog
+):
+    """Le scan tourne toutes les quatre heures sans que personne ne le regarde. Ce journal est la
+    seule chose qui distingue, dans les traces du conteneur, une source qui collecte de zéro offre
+    d'une source qui ne s'exécute plus du tout."""
+    caplog.set_level(logging.INFO, logger="scrappervol.scheduler.app")
+    _trajet(session)
+
+    _job_scan(
+        engine, reglages, faux_mailer, fausse_source(name="google_flights", offres=[(499, "TS")])
+    )
+
+    assert "scan google_flights" in caplog.text
 
 
 def test_le_job_de_digest_envoie_reellement_un_courriel(engine, session, reglages, faux_mailer):
