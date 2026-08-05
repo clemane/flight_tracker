@@ -8,6 +8,9 @@ services:
       - ./data:/app/data
       - ./scrappervol:/app/scrappervol
       - ./tests:/app/tests
+      # Monté comme le code : sans cela les scripts exécutés dans le conteneur seraient ceux
+      # figés dans l'image au dernier build, pas ceux du dépôt.
+      - ./scripts:/app/scripts
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped

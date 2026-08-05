@@ -16,6 +16,33 @@ cp .env.example .env      # renseigner les paramètres SMTP et ALERT_TO
 Le tableau de bord est alors sur <http://127.0.0.1:8080>. Il n'est accessible que depuis cette
 machine : l'application n'a pas d'authentification, et n'a pas vocation à être exposée.
 
+## Vérifier que l'installation fonctionne
+
+Le premier passage de collecte n'a lieu qu'au bout de plusieurs heures et le digest ne part qu'à
+18 h : au démarrage, le tableau de bord reste donc vide un long moment, sans que rien distingue
+une installation qui marche d'une installation en panne. `./dev once` force ces passages.
+
+1. Déclarer un trajet sur <http://127.0.0.1:8080/routes>. Un aller-retour à dates fixes, à deux ou
+   trois mois d'ici, donne le résultat le plus lisible.
+2. `./dev once scan` — compter une quarantaine de secondes, Air Transat étant pilotée dans un
+   navigateur. La commande affiche, pour chaque source, le nombre d'offres relevées. Une source à
+   zéro offre, ou en échec, est le signal à suivre : les journaux et `data/debug/` en disent la
+   raison.
+3. Recharger le tableau de bord : le trajet doit porter un prix. La page Santé doit montrer les
+   deux sources avec un dernier succès à l'instant.
+4. `./dev once preview` affiche le digest tel qu'il partirait le soir même.
+
+Les deux sources étant indépendantes, leurs prix se recoupent : sur un même vol, un écart de
+quelques dollars est normal, un facteur 2 signale une lecture faussée.
+
+Le premier jour, chaque trajet porte la mention « historique en constitution » : la détection
+d'aubaines exige 14 jours de relevés, en deçà desquels aucune alerte ne part — c'est voulu, une
+médiane calculée sur trois points n'a aucun sens.
+
+Tant que `SMTP_HOST` garde sa valeur d'exemple, aucun courriel ne part. Le rendu reste consultable
+par `./dev once preview` ; pour recevoir réellement les courriels, renseigner un serveur SMTP réel
+dans `.env` — l'envoi passe par STARTTLS, avec authentification si `SMTP_USER` est renseigné.
+
 ## Utilisation courante
 
 | Commande | Effet |
@@ -26,6 +53,9 @@ machine : l'application n'a pas d'authentification, et n'a pas vocation à être
 | `./dev test -m live` | lance les tests réseau, qui touchent les sites des sources |
 | `./dev lint` | vérifie le style |
 | `./dev shell` | ouvre un interpréteur dans le conteneur |
+| `./dev once scan` | déclenche un passage de collecte tout de suite |
+| `./dev once preview` | affiche le digest du jour sans l'envoyer |
+| `./dev once digest` | construit et envoie le digest |
 | `docker compose down` | arrête le service |
 
 ## Fonctionnement
