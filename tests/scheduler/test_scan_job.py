@@ -6,7 +6,9 @@ from scrappervol.config import Settings
 from scrappervol.core.types import DatePolicyKind, FlightOffer
 from scrappervol.scheduler.jobs import run_scan
 from scrappervol.storage import repo
-from scrappervol.storage.models import AlertKind, DailyLow, Route
+from sqlmodel import select
+
+from scrappervol.storage.models import Alert, AlertKind, DailyLow, Route
 
 MAINTENANT = datetime(2026, 8, 4, 14, 0, tzinfo=UTC)
 AUJOURDHUI = date(2026, 8, 4)
@@ -389,3 +391,117 @@ def test_un_echec_apres_des_offres_partielles_ne_laisse_rien_en_base(
     assert resultat.failed is True
     assert resultat.offers_recorded == 0
     assert faux_mailer.envois == []
+
+
+def test_un_prix_sensiblement_sous_la_mediane_mais_pas_assez_ne_declenche_rien(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Encadre le seuil de 40 % par le haut, là où le test à 550 ne l'encadrait que de loin.
+
+    Un seuil relâché à 15 % — la valeur de `find_threshold`, une confusion plausible — laissait
+    toute la suite verte : 550 contre 600 ne fait que 8,3 %, en deçà des deux seuils. À 500 contre
+    600, soit 16,7 %, les deux valeurs se séparent enfin : le prix est bien plus bas que d'ordinaire
+    sans être l'aubaine que le design veut signaler.
+    """
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(500, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 0
+    assert faux_mailer.envois == []
+
+
+def test_un_envoi_echoue_nest_pas_compte_comme_une_alerte_emise(
+    session, reglages, fausse_source, sans_pause, caplog
+):
+    """`exceptions_sent` doit compter les courriels partis, pas les aubaines détectées.
+
+    Deux gardes ici. La première : un `return True` sur le chemin d'échec gonflerait le compteur
+    sans qu'aucun courriel ne parte — et c'est ce compteur que l'ordonnanceur (tâche 17) et le
+    tableau de bord (tâche 18) rendront visible. La seconde : sans trace journalisée, un serveur
+    SMTP muet resterait parfaitement invisible, ce que le design nomme le risque principal.
+    """
+
+    class MailerCasse:
+        def send(self, mail, to):
+            raise RuntimeError("SMTP injoignable")
+
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    with caplog.at_level("ERROR", logger="scrappervol.scheduler.jobs"):
+        resultat = run_scan(
+            session,
+            fausse_source(name="google_flights", offres=[(299, "A")]),
+            reglages,
+            MailerCasse(),
+            MAINTENANT,
+            sleeper=dormir,
+        )
+
+    assert resultat.exceptions_sent == 0
+    assert "SMTP injoignable" in caplog.text
+
+
+def test_le_prix_du_jour_nentre_pas_dans_sa_propre_reference(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """L'historique s'arrête à la veille, jour courant exclu. `daily_low_history` le garantit et
+    ses propres tests le vérifient, mais rien ne vérifiait la borne que lui passe l'appelant.
+
+    Treize jours d'historique, soit un de moins que les quatorze exigés : aucune alerte ne doit
+    partir. Le plus bas du jour vient pourtant d'être posé quelques lignes plus tôt dans le même
+    passage — s'il était admis dans sa propre référence, le compte atteindrait quatorze et
+    l'alerte partirait. Un trajet tout juste trop jeune pour être jugé se mettrait ainsi à
+    déclencher des alertes en se comptant lui-même.
+    """
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=13)
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "A")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 0
+    assert faux_mailer.envois == []
+
+
+def test_lalerte_enregistree_porte_le_prix_reellement_alerte(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Le contenu du `payload` n'était vérifié par aucun test : seule son existence l'était.
+    C'est pourtant la trace d'audit de ce qui a été annoncé, et `offer_hash` y sert à ne pas
+    répéter l'alerte."""
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "A")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    alerte = session.exec(select(Alert)).one()
+    assert alerte.kind == AlertKind.EXCEPTION
+    assert alerte.payload["price_cad"] == 299
+    assert alerte.payload["offer_hash"]
