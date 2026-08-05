@@ -5774,8 +5774,8 @@ git commit -m "feat: passage de scan avec détection et alerte d'exception"
 ## Tâche 16 : digest quotidien et purge
 
 **Fichiers :**
-- Modifier : `scrappervol/scheduler/jobs.py`
-- Test : `tests/scheduler/test_digest_job.py`
+- Modifier : `scrappervol/detection/rules.py` (étape 0), `scrappervol/scheduler/jobs.py`
+- Test : `tests/detection/test_rules.py` (étape 0), `tests/scheduler/test_digest_job.py`
 
 **Interfaces :**
 - Consomme : dépôt (tâche 5), `is_find`, `PriceContext`, `relative_gap` (tâche 7), `render_digest`,
@@ -5786,6 +5786,61 @@ git commit -m "feat: passage de scan avec détection et alerte d'exception"
   - `purge_old_data(session, settings, now) -> int`
   - `detection.rules.SEUIL_SOURCE_MUETTE_H = 48` — ajouté au module de règles, et non à `jobs`, pour
     que l'interface web puisse s'en servir sans dépendre de l'ordonnanceur (§4 du design)
+  - `is_find` gagne un paramètre `credibility_floor: int` (étape 0)
+
+- [ ] **Étape 0 : donner à `is_find` le plancher de crédibilité**
+
+`is_exception` écarte les prix trop bas pour être vrais (`price_cad <= credibility_floor` en tête de
+fonction), `is_find` ne le fait pas. L'asymétrie est un défaut : un prix aberrant — analyse cassée,
+montant lu en centimes, taxe prise pour le total — passe sous n'importe quelle cible et serait
+annoncé chaque jour comme la trouvaille du digest, en gonflant `find_count` et en noyant les vraies.
+C'est le digest qui rend cette dette visible, donc c'est ici qu'on la solde, avant tout le reste.
+
+Dans `scrappervol/detection/rules.py`, ajouter le paramètre et la garde, au même rang que dans
+`is_exception` — c'est-à-dire **avant** l'examen de la cible :
+
+```python
+def is_find(
+    price_cad: int,
+    context: PriceContext,
+    target_price_cad: int | None,
+    find_threshold: float,
+    min_history_days: int,
+    credibility_floor: int,
+) -> bool:
+    """Trouvaille au sens du §8 : sous la cible absolue, ou nettement sous la médiane."""
+    if price_cad <= credibility_floor:
+        return False
+    if target_price_cad is not None and price_cad <= target_price_cad:
+        return True
+    ...
+```
+
+Dans `tests/detection/test_rules.py`, les appels existants à `is_find` doivent recevoir le nouveau
+paramètre (`credibility_floor=50`), et ce test est à ajouter :
+
+```python
+def test_un_prix_incroyablement_bas_nest_pas_une_trouvaille():
+    """Symétrique de la garde d'`is_exception`. Placée avant l'examen de la cible, sans quoi un
+    prix aberrant passerait sous n'importe quelle cible et deviendrait la trouvaille du jour."""
+    assert (
+        is_find(
+            price_cad=12,
+            context=PriceContext(daily_lows=[600] * 20),
+            target_price_cad=500,
+            find_threshold=0.15,
+            min_history_days=14,
+            credibility_floor=50,
+        )
+        is False
+    )
+```
+
+`build_digest` passera `settings.credibility_floor_cad`. Vérifier avant de poursuivre :
+
+```bash
+./dev test tests/detection/ && ./dev lint
+```
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
@@ -5890,21 +5945,52 @@ def test_un_trajet_sans_historique_significatif_est_marque_en_construction(sessi
 
 
 def test_un_trajet_sans_prix_du_jour_apparait_quand_meme(session, reglages):
-    _trajet(session)
+    """Un trajet muet doit rester visible — c'est ainsi qu'une panne se voit — mais il ne doit
+    évidemment pas être annoncé comme une trouvaille faute de prix à comparer."""
+    _trajet(session, target_price_cad=500)
 
     bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
 
     assert bloc.price_cad is None
+    assert bloc.is_find is False
 
 
-def test_le_digest_compte_les_trouvailles(session, reglages):
-    trajet = _trajet(session, target_price_cad=500)
-    observation = repo.record_observations(session, trajet.id, [_offre(450)], MAINTENANT)[0]
+def _trajet_avec_prix(session, prix: int, mediane: int, **surcharges) -> None:
+    """Un trajet actif, un plus bas du jour à `prix`, et 20 jours d'historique à `mediane`.
+
+    Vingt jours dépassent `min_history_days` (14), sans quoi `find_count` ne compterait rien :
+    il exclut les trajets encore en construction.
+    """
+    trajet = _trajet(session, **surcharges)
+    observation = repo.record_observations(session, trajet.id, [_offre(prix)], MAINTENANT)[0]
     repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, observation)
     for decalage in range(1, 21):
-        _jour(session, trajet.id, AUJOURDHUI - timedelta(days=decalage), 600)
+        _jour(session, trajet.id, AUJOURDHUI - timedelta(days=decalage), mediane)
+
+
+def test_un_prix_sous_la_cible_compte_comme_trouvaille(session, reglages):
+    """La cible absolue suffit seule : ici l'écart à la médiane vaut 10 %, sous le seuil de 15 %,
+    donc seule la branche `price_cad <= target_price_cad` peut produire la trouvaille."""
+    _trajet_avec_prix(session, prix=450, mediane=500, target_price_cad=500)
 
     assert build_digest(session, reglages, MAINTENANT).find_count == 1
+
+
+def test_un_prix_nettement_sous_la_mediane_compte_comme_trouvaille(session, reglages):
+    """L'écart à la médiane suffit seul : aucune cible n'est fixée, et 450 contre 600 fait 25 %,
+    au-delà du seuil de 15 %."""
+    _trajet_avec_prix(session, prix=450, mediane=600, target_price_cad=None)
+
+    assert build_digest(session, reglages, MAINTENANT).find_count == 1
+
+
+def test_un_prix_ordinaire_ne_compte_pas_comme_trouvaille(session, reglages):
+    """Le pendant négatif des deux tests ci-dessus, sans lequel un `is_find` toujours vrai les
+    satisferait tous les deux : 450 reste au-dessus de la cible de 400, et son écart à la médiane
+    de 500 n'est que de 10 %."""
+    _trajet_avec_prix(session, prix=450, mediane=500, target_price_cad=400)
+
+    assert build_digest(session, reglages, MAINTENANT).find_count == 0
 
 
 def test_letat_des_sources_est_toujours_present(session, reglages):
@@ -5915,19 +6001,26 @@ def test_letat_des_sources_est_toujours_present(session, reglages):
     donnees = build_digest(session, reglages, MAINTENANT)
 
     assert {p.name for p in donnees.providers} == set(reglages.enabled_providers)
+    # Sans ces deux lignes, un `is_stale` constamment vrai satisferait toute la suite : les deux
+    # tests suivants ne vérifient que le cas muet. Le digest crierait à la panne chaque jour.
+    assert all(p.is_stale is False for p in donnees.providers)
+    assert donnees.has_stale_provider is False
 
 
 def test_une_source_muette_depuis_plus_de_48h_est_marquee(session, reglages):
+    """La source porte ici le nom d'une source activée. `build_digest` rend l'état des sources
+    que l'on utilise — `enabled_providers`, verrouillé par le test ci-dessus — et une santé
+    enregistrée pour une source désactivée n'y figurerait pas."""
     _trajet(session)
     session.add(
-        ProviderHealth(provider="transat", last_success_at=MAINTENANT - timedelta(hours=72))
+        ProviderHealth(provider="google_flights", last_success_at=MAINTENANT - timedelta(hours=72))
     )
     session.commit()
 
     donnees = build_digest(session, reglages, MAINTENANT)
 
-    transat = next(p for p in donnees.providers if p.name == "transat")
-    assert transat.is_stale is True
+    source = next(p for p in donnees.providers if p.name == "google_flights")
+    assert source.is_stale is True
     assert donnees.has_stale_provider is True
 
 
@@ -6123,8 +6216,8 @@ particulier, et la table `alert` sert ici de journal d'envoi.
 ./dev lint
 ```
 
-Attendu : 21 tests d'ordonnancement passés (9 de la tâche 15, 12 ici), et les tests de détection
-toujours au vert après l'ajout de la constante.
+Attendu : 25 tests d'ordonnancement passés (11 de la tâche 15, 14 ici), et les tests de détection
+toujours au vert après l'ajout de la constante et du plancher de crédibilité à `is_find`.
 
 - [ ] **Étape 6 : committer**
 
