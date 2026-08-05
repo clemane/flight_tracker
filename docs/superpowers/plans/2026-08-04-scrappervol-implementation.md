@@ -6572,7 +6572,8 @@ parallèle sur la même source.
 ./dev lint
 ```
 
-Attendu : 29 tests passés.
+Attendu : 51 tests passés dans `tests/scheduler/` (16 de la tâche 15, 21 de la tâche 16, 14 ici),
+et la suite complète à 256.
 
 - [ ] **Étape 5 : committer**
 
