@@ -2,20 +2,29 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 
 from scrappervol.core.types import SearchQuery, TripType
 from scrappervol.providers.base import EmptyResultError, ProviderError
-from scrappervol.providers.transat import TransatProvider, parse_results
+from scrappervol.providers.transat import (
+    TransatProvider,
+    _fare_btn_moins_cher,
+    _franchir_modale_upsell,
+    _selectionner_tarif,
+    _sous_tarif_moins_cher,
+    _verifier_etape_sommaire,
+    parse_summary,
+)
 
-FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "transat_yul_cun.html"
+FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "transat_summary_yul_cun.html"
 
-# La requête qui correspond exactement à ce qui a produit la fixture réelle (capture du
-# 2026-08-04, deuxième passage à 15:45, cinq minutes après un premier passage identique à 15:38).
+# La requête qui correspond exactement à ce qui a produit la fixture réelle (capture de la
+# reconnaissance de la tâche 21, page /summary, total 533,41 $, vols TS938 / TS539).
 REQUETE_REELLE = SearchQuery(
     origin="YUL",
     destination="CUN",
-    depart_date=date(2026, 11, 9),
-    return_date=date(2026, 11, 16),
+    depart_date=date(2026, 11, 3),
+    return_date=date(2026, 11, 10),
     trip_type=TripType.ROUND_TRIP,
 )
 
@@ -25,22 +34,19 @@ def html_reel():
     return FIXTURE.read_text(encoding="utf-8")
 
 
-def _carte_html(
+def _carte_vol_html(
     *,
-    id_carte: str = "flight-result-card-0",
     origine: str = "Montréal (YUL)",
     destination: str = "Cancun (CUN)",
     airline_label: str = "Exploité par Air Transat",
     duree: str = "4h 50min",
     numeros_vol: tuple[str, ...] = ("TS938",),
-    tarifs: tuple[tuple[str, str], ...] = (("eco", "297$"), ("club", "687$")),
-    tarifs_sans_prix: tuple[str, ...] = (),
     avec_compagnie: bool = True,
     avec_duree: bool = True,
 ) -> str:
-    """Construit une carte de vol minimale mais fidèle aux sélecteurs relevés dans la fixture
-    réelle (voir tests/fixtures/transat_yul_cun.html), pour isoler un seul comportement à la fois
-    sans dépendre de la mise en page complète de la page réelle."""
+    """Construit un bloc `.flight-card` minimal mais fidèle aux sélecteurs relevés dans la fixture
+    réelle (tests/fixtures/transat_summary_yul_cun.html), pour isoler un seul comportement à la
+    fois sans dépendre de la mise en page complète de la page réelle."""
     bloc_compagnie = (
         f'<div class="common-airline">'
         f'<button class="panel-airlineType-btn" aria-label="{airline_label}"></button>'
@@ -55,21 +61,8 @@ def _carte_html(
         else ""
     )
     numeros_html = "".join(f'<span class="panel-number">{n}</span>' for n in numeros_vol)
-    tarifs_html = "".join(
-        f'<div class="fare"><button class="fare-btn {tier}"><span class="expandFare">'
-        f'<span class="expandFare-startFrom">À partir de '
-        f'<span class="expandFare-price">{prix}</span></span></span></button></div>'
-        for tier, prix in tarifs
-    )
-    # Un bouton tarifaire présent mais sans nœud de prix : observé sur la page réelle pour les
-    # classes affichées comme indisponibles à la date choisie.
-    tarifs_html += "".join(
-        f'<div class="fare"><button class="fare-btn {tier}"><span class="expandFare">'
-        f'<span class="expandFare-startFrom">Non disponible</span></span></button></div>'
-        for tier in tarifs_sans_prix
-    )
     return (
-        f'<div id="{id_carte}" class="co-shopResult-flightResult-card">'
+        '<div class="flight-card">'
         f"{bloc_duree}"
         f'<div class="common-location">'
         f'<span class="cityAirport">{origine}</span>'
@@ -77,252 +70,494 @@ def _carte_html(
         f"</div>"
         f"{bloc_compagnie}"
         f'<div class="panel-type">{numeros_html}</div>'
-        f'<div class="co-shopResult-flightResult-fareClassesBtn">{tarifs_html}</div>'
         f"</div>"
     )
 
 
-def _page_html(*cartes: str, date_affichee: str | None = "Lun. 9 nov. 2026") -> str:
-    curseur = (
-        f'<button class="date-slider-dateBtn active" aria-pressed="true" aria-current="date" '
-        f'aria-label="{date_affichee}, 297$, taxes et frais incl."></button>'
-        if date_affichee
+def _page_resume_html(
+    *,
+    prix: str | None = "533,41$",
+    carte_aller: str | None = None,
+    carte_retour: str | None = None,
+) -> str:
+    if carte_aller is None:
+        carte_aller = _carte_vol_html()
+    if carte_retour is None:
+        carte_retour = _carte_vol_html(
+            origine="Cancun (CUN)",
+            destination="Montréal (YUL)",
+            numeros_vol=("TS539",),
+            duree="4h 10min",
+        )
+    bloc_total = (
+        f'<div class="flight-container-total"><div class="label">Total</div>'
+        f'<div class="value"><div class="price">{prix}</div></div></div>'
+        if prix is not None
         else ""
     )
-    return f"<html><body>{curseur}{''.join(cartes)}</body></html>"
+    cartes = "".join(c for c in (carte_aller, carte_retour) if c)
+    return f"<html><body>{cartes}{bloc_total}</body></html>"
 
 
-# --- Sur la fixture réelle ---------------------------------------------------------------------
+# --- Sur la fixture réelle -----------------------------------------------------------------------
 
 
-def test_parse_results_traduit_la_fixture_reelle(html_reel):
-    """Le contrat de base, mesuré sur la page qu'Air Transat a réellement renvoyée."""
-    offres = parse_results(html_reel, REQUETE_REELLE)
+def test_parse_summary_traduit_la_fixture_reelle(html_reel):
+    """Le contrat de base, mesuré sur la page qu'Air Transat a réellement renvoyée : une seule
+    offre, le total aller-retour, pas un prix d'aller seul par classe tarifaire."""
+    offres = parse_summary(html_reel, REQUETE_REELLE)
 
-    # 2 cartes de vol x 2 classes tarifaires (Économie, Club) observées dans la fixture.
-    assert len(offres) == 4
-    for offre in offres:
-        assert offre.provider == "transat"
-        assert offre.origin == "YUL"
-        assert offre.destination == "CUN"
-        assert offre.price_cad > 0
-        assert offre.currency_original == "CAD"
-        assert offre.airline == "Air Transat"
-        assert offre.stops == 0
-        assert offre.deep_link.startswith("https://www.airtransat.com/")
-
-
-def test_parse_results_produit_au_moins_trois_prix_cad_distincts(html_reel):
-    """Le critère de réussite de la tâche 11, transformé en garde permanente : si un jour la page
-    change de forme au point de ne plus livrer trois prix distincts, ce test doit rougir plutôt que
-    de laisser le silence s'installer."""
-    offres = parse_results(html_reel, REQUETE_REELLE)
-
-    prix_distincts = {o.price_cad for o in offres}
-    assert len(prix_distincts) >= 3
-    assert prix_distincts == {297, 687, 1229}
+    assert len(offres) == 1
+    (offre,) = offres
+    assert offre.provider == "transat"
+    assert offre.origin == "YUL"
+    assert offre.destination == "CUN"
+    assert offre.price_cad == 533
+    assert offre.price_original == 533.0
+    assert offre.currency_original == "CAD"
+    assert offre.airline == "Air Transat"
+    assert offre.stops == 0
+    assert offre.duration_minutes == 4 * 60 + 50 + 4 * 60 + 10
+    assert offre.depart_date == REQUETE_REELLE.depart_date
+    assert offre.return_date == REQUETE_REELLE.return_date
+    assert offre.deep_link.startswith("https://www.airtransat.com/")
 
 
-def test_parse_results_lit_la_date_de_depart_affichee_pas_la_requete(html_reel):
-    """Le piège de la tâche 10 : si l'implémentation recopiait `query.depart_date` sans lire la
-    page, ce test resterait vert même en cas de régression. Ici la date demandée est délibérément
-    fausse ; seule une lecture réelle du curseur de dates de la page peut faire passer ce test."""
-    requete_avec_fausse_date = SearchQuery(
-        origin="YUL",
-        destination="CUN",
-        depart_date=date(2020, 1, 1),
-        return_date=date(2020, 1, 8),
-    )
+def test_parse_summary_conserve_le_texte_source_et_les_numeros_de_vol_dans_raw(html_reel):
+    (offre,) = parse_summary(html_reel, REQUETE_REELLE)
 
-    offres = parse_results(html_reel, requete_avec_fausse_date)
-
-    assert offres
-    assert all(o.depart_date == date(2026, 11, 9) for o in offres)
+    assert offre.raw["price_text"] == "533,41$"
+    assert offre.raw["flight_numbers"] == ["TS938", "TS539"]
 
 
-def test_parse_results_reporte_la_date_de_retour_de_la_requete(html_reel):
-    """Cette page ne montre que le vol aller (étape « departure » du parcours) : le retour ne peut
-    venir que de la requête, contrairement à la date de départ."""
-    offres = parse_results(html_reel, REQUETE_REELLE)
-
-    assert all(o.return_date == REQUETE_REELLE.return_date for o in offres)
+# --- Sur des pages synthétiques, pour isoler chaque comportement ---------------------------------
 
 
-def test_parse_results_conserve_le_texte_source_dans_raw(html_reel):
-    offres = parse_results(html_reel, REQUETE_REELLE)
+def test_parse_summary_reporte_la_date_de_retour_de_la_requete():
+    """Cette page ne montre pas de curseur de dates confirmant une date affichée (contrairement à
+    l'ancienne étape « departure ») : les deux dates viennent nécessairement de la requête."""
+    html = _page_resume_html()
 
-    for offre in offres:
-        assert offre.raw["card_id"].startswith("flight-result-card-")
-        assert offre.raw["fare_tier"] in {"eco", "club"}
-        assert "$" in offre.raw["price_text"]
+    (offre,) = parse_summary(html, REQUETE_REELLE)
 
-
-# --- Sur des cartes synthétiques, pour isoler chaque champ --------------------------------------
-
-
-def test_parse_results_lit_le_prix_dans_le_texte_pas_une_valeur_fixe():
-    """Si l'extraction du prix était remplacée par une constante, ce test le détecterait : le prix
-    choisi ici (1234$) ne correspond à aucune valeur plausible codée en dur ailleurs."""
-    html = _page_html(_carte_html(tarifs=(("eco", "1 234$"),)))
-
-    (offre,) = parse_results(html, REQUETE_REELLE)
-
-    assert offre.price_cad == 1234
-    assert offre.price_original == 1234.0
+    assert offre.depart_date == REQUETE_REELLE.depart_date
+    assert offre.return_date == REQUETE_REELLE.return_date
 
 
-def test_parse_results_lit_un_prix_avec_espace_insecable():
-    """ "1&nbsp;229$" tel qu'observé dans la fixture réelle pour la classe Club."""
-    html = _page_html(_carte_html(tarifs=(("club", "1\xa0229$"),)))
+def test_parse_summary_lit_le_prix_dans_le_texte_pas_une_valeur_fixe():
+    """Si l'extraction du prix était remplacée par une constante, ce test le détecterait : le
+    total choisi ici (612,34 $) ne correspond à aucune valeur codée en dur ailleurs dans le
+    module."""
+    html = _page_resume_html(prix="612,34$")
 
-    (offre,) = parse_results(html, REQUETE_REELLE)
+    (offre,) = parse_summary(html, REQUETE_REELLE)
+
+    assert offre.price_cad == 612
+    assert offre.raw["price_text"] == "612,34$"
+
+
+def test_parse_summary_lit_un_prix_avec_espace_insecable():
+    html = _page_resume_html(prix="1\xa0229$")
+
+    (offre,) = parse_summary(html, REQUETE_REELLE)
 
     assert offre.price_cad == 1229
 
 
-def test_parse_results_lit_la_compagnie_aerienne_dans_la_page():
-    """Si l'implémentation renvoyait "Air Transat" en dur, ce test le détecterait."""
-    html = _page_html(_carte_html(airline_label="Exploité par Compagnie Fictive"))
+def test_parse_summary_interprete_la_virgule_comme_separateur_decimal():
+    """Piège propre à cette page : "533,41$" doit se lire comme 533 $ (arrondi), pas comme
+    53 341 $. Sans distinguer virgule décimale et espace de milliers, le total serait gonflé d'un
+    facteur 100 — la panne la plus coûteuse possible sur cette fonction."""
+    html = _page_resume_html(prix="533,41$")
 
-    offres = parse_results(html, REQUETE_REELLE)
+    (offre,) = parse_summary(html, REQUETE_REELLE)
 
-    assert offres
-    assert all(o.airline == "Compagnie Fictive" for o in offres)
-
-
-def test_parse_results_lit_la_duree_dans_le_texte():
-    html = _page_html(_carte_html(duree="6h 15min"))
-
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.duration_minutes == 6 * 60 + 15 for o in offres)
+    assert offre.price_cad == 533
 
 
-def test_parse_results_tolere_une_duree_absente():
-    html = _page_html(_carte_html(avec_duree=False))
+def test_parse_summary_ecarte_un_prix_illisible():
+    html = _page_resume_html(prix="Bientôt disponible")
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.duration_minutes is None for o in offres)
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_deduit_zero_escale_dun_seul_numero_de_vol():
-    html = _page_html(_carte_html(numeros_vol=("TS938",)))
+def test_parse_summary_ecarte_un_prix_nul():
+    """Un « 0$ » est un défaut d'affichage, pas une aubaine : le laisser passer produirait un
+    plus bas absolu du trajet et empoisonnerait durablement la base de comparaison."""
+    html = _page_resume_html(prix="0$")
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.stops == 0 for o in offres)
-
-
-def test_parse_results_ecarte_une_carte_a_plusieurs_numeros_de_vol():
-    """Le balisage d'un vol avec escale n'a jamais été observé dans une fixture réelle (les deux
-    seuls vols capturés pour YUL-CUN sont directs). Plutôt que d'inventer une formule sur le nombre
-    d'escales, la carte est écartée : mieux vaut manquer une offre que la deviner."""
-    html = _page_html(_carte_html(numeros_vol=("TS938", "TS200")))
-
-    assert parse_results(html, REQUETE_REELLE) == []
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_ecarte_une_carte_sans_numero_de_vol():
-    html = _page_html(_carte_html(numeros_vol=()))
+def test_parse_summary_rend_aucune_offre_si_le_total_est_absent():
+    html = _page_resume_html(prix=None)
 
-    assert parse_results(html, REQUETE_REELLE) == []
-
-
-def test_parse_results_ecarte_une_carte_sans_compagnie():
-    html = _page_html(_carte_html(avec_compagnie=False))
-
-    assert parse_results(html, REQUETE_REELLE) == []
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_ecarte_une_carte_dont_les_aeroports_ne_correspondent_pas_a_la_requete():
-    """Garde défensive : une carte qui ne parle pas de la paire d'aéroports demandée (page mise en
-    cache, glissement de session) ne doit pas devenir une offre pour le mauvais trajet."""
-    html = _page_html(_carte_html(origine="Toronto (YYZ)", destination="Cancun (CUN)"))
-
-    assert parse_results(html, REQUETE_REELLE) == []
+def test_parse_summary_rend_une_liste_vide_si_la_page_est_vide():
+    """Une page sans structure exploitable ne doit jamais lever d'exception : c'est au provider,
+    pas à cette fonction pure, de traduire l'absence de résultat en échec."""
+    assert parse_summary("<html><body></body></html>", REQUETE_REELLE) == []
 
 
-def test_parse_results_ecarte_un_prix_illisible_sans_perdre_les_autres_tarifs():
-    html = _page_html(_carte_html(tarifs=(("eco", "Bientôt disponible"), ("club", "687$"))))
+def test_parse_summary_ecarte_si_moins_de_deux_blocs_de_vol():
+    html = _page_resume_html(carte_retour="")
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert len(offres) == 1
-    assert offres[0].price_cad == 687
-    assert offres[0].raw["fare_tier"] == "club"
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_ecarte_un_prix_nul():
-    """Un « 0$ » est un défaut d'affichage, pas une aubaine : le laisser passer produirait le plus
-    bas absolu du trajet et empoisonnerait durablement la base de comparaison."""
-    html = _page_html(_carte_html(tarifs=(("eco", "0$"), ("club", "687$"))))
+def test_parse_summary_ecarte_si_les_aeroports_du_bloc_aller_ne_correspondent_pas():
+    html = _page_resume_html(
+        carte_aller=_carte_vol_html(origine="Toronto (YYZ)", destination="Cancun (CUN)")
+    )
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert [o.price_cad for o in offres] == [687]
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_ecarte_un_bouton_tarifaire_sans_prix():
-    html = _page_html(_carte_html(tarifs=(("club", "687$"),), tarifs_sans_prix=("eco",)))
+def test_parse_summary_ecarte_si_les_aeroports_du_bloc_retour_ne_correspondent_pas():
+    html = _page_resume_html(
+        carte_retour=_carte_vol_html(
+            origine="Cancun (CUN)", destination="Toronto (YYZ)", numeros_vol=("TS539",)
+        )
+    )
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert [o.price_cad for o in offres] == [687]
-
-
-def test_parse_results_rend_une_duree_absente_plutot_quune_duree_nulle():
-    """`duration_minutes` vaut None quand la durée est illisible, jamais 0 : un vol de zéro minute
-    serait pris pour une donnée valide par tout ce qui lit ce champ ensuite."""
-    html = _page_html(_carte_html(duree="0h 0min"))
-
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.duration_minutes is None for o in offres)
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_ne_fabrique_pas_de_date_depuis_un_mois_inconnu():
-    """Un libellé de mois non reconnu doit faire retomber sur la date demandée, pas produire une
-    date inventée — une mauvaise date range l'observation sous le mauvais jour."""
-    html = _page_html(_carte_html(), date_affichee="Lun. 9 brumaire 2026")
+def test_parse_summary_ecarte_si_un_bloc_a_plusieurs_numeros_de_vol():
+    """Le balisage d'un vol avec escale n'a jamais été observé dans une fixture réelle. Plutôt que
+    d'inventer une formule sur le nombre d'escales, l'offre entière est écartée."""
+    html = _page_resume_html(carte_aller=_carte_vol_html(numeros_vol=("TS938", "TS200")))
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.depart_date == REQUETE_REELLE.depart_date for o in offres)
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_se_rabat_sur_la_date_demandee_si_le_curseur_est_absent():
-    html = _page_html(_carte_html(), date_affichee=None)
+def test_parse_summary_ecarte_si_un_bloc_est_sans_compagnie():
+    html = _page_resume_html(carte_aller=_carte_vol_html(avec_compagnie=False))
 
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert offres
-    assert all(o.depart_date == REQUETE_REELLE.depart_date for o in offres)
+    assert parse_summary(html, REQUETE_REELLE) == []
 
 
-def test_parse_results_rend_une_liste_vide_si_aucun_resultat():
-    """Une page de résultats sans carte de vol ne doit jamais lever d'exception : c'est au
-    provider, pas à cette fonction pure, de traduire l'absence de résultat en échec."""
-    html = '<html><body><div class="co-shopResult-empty">Aucun vol trouvé</div></body></html>'
+def test_parse_summary_tolere_une_duree_absente():
+    html = _page_resume_html(carte_aller=_carte_vol_html(avec_duree=False))
 
-    assert parse_results(html, REQUETE_REELLE) == []
+    (offre,) = parse_summary(html, REQUETE_REELLE)
 
-
-def test_parse_results_cree_une_offre_par_classe_tarifaire():
-    html = _page_html(_carte_html(tarifs=(("eco", "300$"), ("club", "800$"), ("chill", "500$"))))
-
-    offres = parse_results(html, REQUETE_REELLE)
-
-    assert {o.raw["fare_tier"] for o in offres} == {"eco", "club", "chill"}
-    assert {o.price_cad for o in offres} == {300, 800, 500}
+    assert offre.duration_minutes is None
 
 
-# --- TransatProvider -----------------------------------------------------------------------------
+def test_parse_summary_additionne_les_deux_compagnies_si_elles_different():
+    html = _page_resume_html(
+        carte_aller=_carte_vol_html(airline_label="Exploité par Air Transat"),
+        carte_retour=_carte_vol_html(
+            origine="Cancun (CUN)",
+            destination="Montréal (YUL)",
+            numeros_vol=("TS539",),
+            airline_label="Exploité par Compagnie Fictive",
+        ),
+    )
+
+    (offre,) = parse_summary(html, REQUETE_REELLE)
+
+    assert offre.airline == "Air Transat / Compagnie Fictive"
+
+
+# --- Sélection du tarif le moins cher, via une fausse page Playwright ----------------------------
+#
+# `_fare_btn_moins_cher`, `_sous_tarif_moins_cher` et `_franchir_modale_upsell` prennent une
+# `Page` Playwright en argument, mais leur logique de décision (quel prix retenir, quel bouton
+# cliquer) ne dépend que de ce que `.locator(...)` rend. `_FakePage`/`_FakeLocator` réimplantent
+# juste assez de l'API Playwright par-dessus `BeautifulSoup.select()` (qui interprète les mêmes
+# sélecteurs CSS) pour tester cette logique de décision hors ligne, sans navigateur.
+
+
+class _FakeLocator:
+    def __init__(self, tags, clics):
+        self._tags = list(tags)
+        self._clics = clics
+
+    def count(self) -> int:
+        return len(self._tags)
+
+    def nth(self, i: int) -> "_FakeLocator":
+        return _FakeLocator([self._tags[i]], self._clics)
+
+    @property
+    def first(self) -> "_FakeLocator":
+        return self.nth(0)
+
+    def locator(self, selecteur: str) -> "_FakeLocator":
+        resultats = []
+        for tag in self._tags:
+            resultats.extend(tag.select(selecteur))
+        return _FakeLocator(resultats, self._clics)
+
+    def is_visible(self) -> bool:
+        if not self._tags:
+            return False
+        noeud = self._tags[0]
+        while noeud is not None and hasattr(noeud, "has_attr"):
+            if noeud.has_attr("hidden"):
+                return False
+            noeud = noeud.parent
+        return True
+
+    def inner_text(self) -> str:
+        return self._tags[0].get_text(strip=True)
+
+    def click(self) -> None:
+        self._clics.append(self._tags[0])
+
+
+class _FakePage:
+    """Simule juste ce que `_selectionner_tarif` et ses aides appellent sur une `Page` réelle."""
+
+    def __init__(self, html: str):
+        self._soup = BeautifulSoup(html, "html.parser")
+        self.clics: list = []
+        self.url = "https://www.airtransat.com/fr-CA/flight-search-result/departure"
+
+    def locator(self, selecteur: str) -> _FakeLocator:
+        return _FakeLocator(self._soup.select(selecteur), self.clics)
+
+    def wait_for_timeout(self, _ms: int) -> None:
+        pass
+
+    def wait_for_load_state(self, _state: str, timeout: int | None = None) -> None:
+        pass
+
+
+def _fare_btn_html(prix: str, *, categorie: str = "eco", cache: bool = False) -> str:
+    """`.fare-btn` seul ne suffit pas : le sélecteur de production
+    (`.co-shopResult-flightResult-fareClassesBtn .fare-btn`) exige cet ancêtre précis, d'où
+    l'enveloppe ici — sans elle, `_fare_btn_moins_cher` ne trouverait jamais rien dans ces pages
+    synthétiques, quel que soit le prix inscrit."""
+    attr_hidden = " hidden" if cache else ""
+    return (
+        f'<div class="co-shopResult-flightResult-fareClassesBtn"{attr_hidden}>'
+        f'<button class="fare-btn {categorie}"><span class="expandFare">'
+        f'<span class="expandFare-startFrom">À partir de '
+        f'<span class="expandFare-price">{prix}</span></span></span></button></div>'
+    )
+
+
+def _sous_tarif_html(titre: str, prix: str, *, cache: bool = False) -> str:
+    attr_hidden = " hidden" if cache else ""
+    return (
+        f'<div class="container">'
+        f'<span class="title">{titre}</span><span class="price">{prix}</span>'
+        f'<button class="co-btn co-btn-level1" aria-label="Sélectionner"{attr_hidden}>'
+        f"Sélectionner</button></div>"
+    )
+
+
+def _fare_panel_html(sous_tarifs: str, *, cache: bool) -> str:
+    return f'<div class="fare-panel"{" hidden" if cache else ""}>{sous_tarifs}</div>'
+
+
+def test_fare_btn_moins_cher_retient_le_minimum_pas_le_premier_visible():
+    """L'ordre au DOM place le prix le plus haut en premier : si l'implémentation retenait « le
+    premier visible » plutôt que le minimum, ce test le détecterait."""
+    html = (
+        "<html><body>"
+        + _fare_btn_html("687$", categorie="club")
+        + _fare_btn_html("297$", categorie="eco")
+        + "</body></html>"
+    )
+    page = _FakePage(html)
+
+    bouton = _fare_btn_moins_cher(page)
+
+    assert bouton is not None
+    assert bouton.locator(".expandFare-price").first.inner_text() == "297$"
+
+
+def test_fare_btn_moins_cher_ignore_un_bouton_cache_meme_moins_cher():
+    html = (
+        "<html><body>"
+        + _fare_btn_html("50$", categorie="eco", cache=True)
+        + _fare_btn_html("687$", categorie="club")
+        + "</body></html>"
+    )
+    page = _FakePage(html)
+
+    bouton = _fare_btn_moins_cher(page)
+
+    assert bouton is not None
+    assert bouton.locator(".expandFare-price").first.inner_text() == "687$"
+
+
+def test_fare_btn_moins_cher_ignore_un_prix_illisible():
+    html = (
+        "<html><body>"
+        + '<div class="fare"><button class="fare-btn eco"><span class="expandFare">'
+        + '<span class="expandFare-startFrom">Non disponible</span></span></button></div>'
+        + _fare_btn_html("687$", categorie="club")
+        + "</body></html>"
+    )
+    page = _FakePage(html)
+
+    bouton = _fare_btn_moins_cher(page)
+
+    assert bouton is not None
+    assert bouton.locator(".expandFare-price").first.inner_text() == "687$"
+
+
+def test_fare_btn_moins_cher_rend_none_si_rien_nest_exploitable():
+    html = "<html><body></body></html>"
+    page = _FakePage(html)
+
+    assert _fare_btn_moins_cher(page) is None
+
+
+def test_sous_tarif_moins_cher_retient_le_minimum_du_panneau_visible():
+    """L'ordre au DOM place le sous-tarif le plus cher en premier dans le panneau visible : si
+    l'implémentation retenait « le premier visible » plutôt que le minimum, ce test le
+    détecterait."""
+    panneau_visible = _sous_tarif_html("Eco Flex", "502$") + _sous_tarif_html("Eco Budget", "297$")
+    html = "<html><body>" + _fare_panel_html(panneau_visible, cache=False) + "</body></html>"
+    page = _FakePage(html)
+
+    bouton = _sous_tarif_moins_cher(page)
+
+    assert bouton is not None
+    conteneur_retenu = bouton._tags[0].find_parent("div", class_="container")
+    assert conteneur_retenu.select_one(".title").get_text(strip=True) == "Eco Budget"
+    assert conteneur_retenu.select_one(".price").get_text(strip=True) == "297$"
+
+
+def test_sous_tarif_moins_cher_ignore_le_panneau_cache_meme_moins_cher():
+    panneau_cache = _sous_tarif_html("Eco Budget", "50$")
+    panneau_visible = _sous_tarif_html("Club Essentiel", "600$")
+    html = (
+        "<html><body>"
+        + _fare_panel_html(panneau_cache, cache=True)
+        + _fare_panel_html(panneau_visible, cache=False)
+        + "</body></html>"
+    )
+    page = _FakePage(html)
+
+    bouton = _sous_tarif_moins_cher(page)
+    conteneurs = page.locator(".fare-panel .container")
+
+    assert bouton is not None
+    # Le sous-tarif retenu doit être celui du panneau visible (600$), jamais celui du panneau
+    # caché (50$) bien que numériquement moindre.
+    prix_retenus = [
+        c.locator(".price").first.inner_text()
+        for i in range(conteneurs.count())
+        for c in [conteneurs.nth(i)]
+        if c.is_visible()
+    ]
+    assert prix_retenus == ["600$"]
+
+
+def test_sous_tarif_moins_cher_rend_none_si_rien_nest_exploitable():
+    html = "<html><body></body></html>"
+    page = _FakePage(html)
+
+    assert _sous_tarif_moins_cher(page) is None
+
+
+def test_franchir_modale_upsell_clique_poursuivre_jamais_whiterabbit():
+    """Le test qui protège directement contre le piège documenté à la reconnaissance : cliquer
+    sur `co-btn-whiterabbit` relèverait le tarif déjà choisi vers l'upsell."""
+    html = (
+        '<html><body><div id="fareUpsellModal">'
+        '<div class="dialog-colFlex selectedFare">'
+        '<button class="co-btn co-btn-level4">Poursuivre avec Eco Budget</button></div>'
+        '<div class="dialog-colFlex recoFare">'
+        '<button class="co-btn co-btn-whiterabbit">Sélectionner Eco Standard</button></div>'
+        "</div></body></html>"
+    )
+    page = _FakePage(html)
+
+    _franchir_modale_upsell(page)
+
+    assert len(page.clics) == 1
+    (clic,) = page.clics
+    assert "co-btn-level4" in (clic.get("class") or [])
+    assert "co-btn-whiterabbit" not in (clic.get("class") or [])
+
+
+def test_franchir_modale_upsell_ne_fait_rien_si_absente():
+    page = _FakePage("<html><body></body></html>")
+
+    _franchir_modale_upsell(page)
+
+    assert page.clics == []
+
+
+def test_franchir_modale_upsell_leve_provider_error_si_bouton_de_confirmation_introuvable():
+    html = '<html><body><div id="fareUpsellModal"><p>chargement…</p></div></body></html>'
+    page = _FakePage(html)
+
+    with pytest.raises(ProviderError, match="transat"):
+        _franchir_modale_upsell(page)
+
+
+def test_selectionner_tarif_choisit_la_categorie_et_le_sous_tarif_les_moins_chers():
+    """Bout en bout sur `_selectionner_tarif` : la catégorie la moins chère (297$, pas 687$) est
+    cliquée, puis le sous-tarif le moins cher de son panneau (297$, pas 352$) est cliqué."""
+    panneau_eco = _sous_tarif_html("Eco Standard", "352$") + _sous_tarif_html("Eco Budget", "297$")
+    panneau_club = _sous_tarif_html("Club", "900$")
+    html = (
+        "<html><body>"
+        + _fare_btn_html("687$", categorie="club")
+        + _fare_btn_html("297$", categorie="eco")
+        + _fare_panel_html(panneau_eco, cache=False)
+        + _fare_panel_html(panneau_club, cache=True)
+        + "</body></html>"
+    )
+    page = _FakePage(html)
+
+    _selectionner_tarif(page, "aller")
+
+    assert len(page.clics) == 2
+    clic_categorie, clic_sous_tarif = page.clics
+    assert "eco" in (clic_categorie.get("class") or [])
+    assert clic_sous_tarif.get("aria-label") == "Sélectionner"
+    conteneur_clique = clic_sous_tarif.find_parent("div", class_="container")
+    assert conteneur_clique.select_one(".title").get_text(strip=True) == "Eco Budget"
+
+
+def test_selectionner_tarif_leve_provider_error_si_aucune_categorie_exploitable():
+    page = _FakePage("<html><body></body></html>")
+
+    with pytest.raises(ProviderError, match="aller"):
+        _selectionner_tarif(page, "aller")
+
+
+def test_selectionner_tarif_leve_provider_error_si_aucun_sous_tarif_apres_depliage():
+    html = "<html><body>" + _fare_btn_html("297$", categorie="eco") + "</body></html>"
+    page = _FakePage(html)
+
+    with pytest.raises(ProviderError, match="retour"):
+        _selectionner_tarif(page, "retour")
+
+
+# --- La garde sur /summary, fonction pure -------------------------------------------------------
+
+
+def test_verifier_etape_sommaire_ne_leve_rien_sur_summary():
+    _verifier_etape_sommaire(
+        "https://www.airtransat.com/fr-CA/flight-search-result/summary?outbound=x&inbound=y"
+    )
+
+
+def test_verifier_etape_sommaire_leve_provider_error_avec_lurl_atteinte():
+    """L'erreur doit porter l'URL réellement atteinte, pas un message générique : c'est ce qui
+    permet de savoir, sans rouvrir un navigateur, où le parcours est resté bloqué."""
+    url = "https://www.airtransat.com/fr-CA/flight-search-result/return?outbound=x"
+
+    with pytest.raises(ProviderError) as excinfo:
+        _verifier_etape_sommaire(url)
+
+    assert url in str(excinfo.value)
+
+
+# --- TransatProvider -------------------------------------------------------------------------
 
 
 def test_le_provider_leve_empty_result_quand_rien_nest_exploitable(monkeypatch):
@@ -350,7 +585,8 @@ def test_le_provider_rend_les_offres_de_la_fixture_via_fetch(monkeypatch, html_r
 
     offres = source.search(REQUETE_REELLE)
 
-    assert len(offres) == 4
+    assert len(offres) == 1
+    assert offres[0].price_cad == 533
 
 
 def test_le_provider_expose_son_nom():
@@ -408,14 +644,12 @@ def test_le_provider_refuse_plusieurs_passagers_avant_douvrir_un_navigateur(monk
 
 @pytest.mark.live
 def test_fumee_reseau_transat():
-    """Touche le vrai site Air Transat en pilotant le formulaire. Exclu par défaut
-    (`./dev test -m live` pour le lancer) : c'est une automatisation de formulaire, plus lourde et
-    plus fragile qu'un appel d'API, à ne pas déclencher en boucle.
+    """Touche le vrai site Air Transat en pilotant le formulaire jusqu'à `/summary`. Exclu par
+    défaut (`./dev test -m live` pour le lancer) : c'est une automatisation de formulaire, plus
+    lourde et plus fragile qu'un appel d'API, à ne pas déclencher en boucle.
 
-    Ne vérifie pas des prix précis — ils changent en continu — mais que le parcours complet
-    (autocomplétion origine/destination, calendrier, soumission) aboutit encore à une page avec des
-    offres exploitables. C'est le seul garde-fou contre un changement de formulaire qui laisserait
-    la fixture verte pendant que la source réelle ne produit plus rien.
+    Ne vérifie pas un prix précis — il change en continu — mais qu'un **total** aller-retour est
+    bien relevé, avec une date de retour, pas un prix d'aller seul par classe tarifaire.
     """
     depart = date.today() + timedelta(days=97)
     requete = SearchQuery(
@@ -427,6 +661,8 @@ def test_fumee_reseau_transat():
 
     offres = TransatProvider().search(requete)
 
-    assert offres
-    assert all(o.price_cad > 0 for o in offres)
-    assert all(o.airline for o in offres)
+    assert len(offres) == 1
+    (offre,) = offres
+    assert offre.price_cad > 0
+    assert offre.return_date == requete.return_date
+    assert offre.airline
