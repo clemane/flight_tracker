@@ -34,6 +34,21 @@ def test_une_liste_daeroports_vide_leve():
         )
 
 
+def test_un_libelle_fait_despaces_leve():
+    """Sans rognage, «␣␣␣ » passe la garde du libellé vide et le trajet s'affiche sans nom."""
+    with pytest.raises(RouteFormError, match="libellé"):
+        validate_route_form(
+            {
+                "label": "   ",
+                "origins": "YUL",
+                "destinations": "CDG",
+                "date_policy": "fixed",
+                "depart": "2027-03-12",
+                "retour": "2027-03-22",
+            }
+        )
+
+
 def test_un_libelle_vide_leve():
     with pytest.raises(RouteFormError):
         validate_route_form(

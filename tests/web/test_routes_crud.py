@@ -99,6 +99,29 @@ def test_agir_sur_un_trajet_inexistant_retourne_404(client):
     assert client.post("/routes/999/toggle").status_code == 404
     assert client.post("/routes/999/delete").status_code == 404
     assert client.get("/routes/999/edit").status_code == 404
+    assert client.post("/routes/999", data=FORMULAIRE).status_code == 404
+
+
+def test_la_creation_est_validee_en_base_et_ne_reste_pas_en_attente(client, session):
+    """Une session laissée en attente perdrait le trajet à la fermeture de la requête.
+
+    L'agencement des tests réinjecte une session unique que rien ne referme entre la requête
+    et l'assertion, si bien qu'un trajet seulement ajouté reste visible ici alors qu'il serait
+    perdu en service. On vérifie donc directement que la requête n'a rien laissé en suspens.
+    """
+    client.post("/routes", data=FORMULAIRE, follow_redirects=False)
+
+    assert not session.new
+
+
+def test_la_liste_montre_aussi_les_trajets_desactives(client, session):
+    client.post("/routes", data=FORMULAIRE)
+    trajet = session.exec(select(Route)).one()
+    client.post(f"/routes/{trajet.id}/toggle")
+
+    corps = client.get("/routes").text
+
+    assert "Paris au printemps" in corps
 
 
 def test_les_champs_de_politique_sont_servis_a_la_demande(client):
