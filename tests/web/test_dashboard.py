@@ -69,6 +69,9 @@ def test_le_tableau_de_bord_montre_le_plus_bas_du_jour(client, session):
     # Le montant seul se retrouverait par accident dans une coordonnée SVG ou une règle CSS.
     assert "480 $" in corps
     assert "aucun relevé" not in corps
+    # Savoir *quelle* source a produit le prix conditionne tout diagnostic : deux sources ne
+    # relèvent pas le même périmètre de vol, et un prix sans provenance n'est pas vérifiable.
+    assert ">google_flights<" in corps
 
 
 def test_un_prix_sous_la_cible_est_signale_comme_trouvaille(client, session):
@@ -101,6 +104,100 @@ def test_un_prix_sous_le_plancher_de_credibilite_nest_pas_signale_comme_trouvail
     session.commit()
 
     assert 'class="trouvaille"' not in client.get("/").text
+
+
+def _historique(session, trajet, jours: dict[int, int]) -> None:
+    """Écrit un plus bas quotidien par décalage en arrière d'aujourd'hui : {décalage: prix}."""
+    for decalage, prix in jours.items():
+        session.add(
+            DailyLow(
+                route_id=trajet.id,
+                day=AUJOURDHUI - timedelta(days=decalage),
+                price_cad=prix,
+                provider="google_flights",
+            )
+        )
+    session.commit()
+
+
+def test_un_prix_nettement_sous_la_mediane_est_signale_comme_trouvaille(client, session):
+    """Sans cible absolue, une trouvaille se juge au seuil *de trouvaille* (15 %), pas à celui
+    des exceptions (40 %). Les deux seuils vivent côte à côte dans les réglages ; confondre l'un
+    pour l'autre ne casse rien de visible et ne ferait que rendre le tableau de bord silencieux
+    sur les trois quarts des vraies aubaines."""
+    trajet = _trajet(session)
+    _historique(session, trajet, dict.fromkeys(range(1, 15), 1000))
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=750, provider="google_flights")
+    )
+    session.commit()
+
+    # 25 % sous la médiane : au-dessus du seuil de trouvaille, en dessous de celui d'exception.
+    assert 'class="trouvaille"' in client.get("/").text
+
+
+def test_un_prix_bas_sans_historique_suffisant_nest_pas_signale_comme_trouvaille(client, session):
+    """Le garde-fou des 14 jours du §8 : tant que l'historique est court, la médiane n'a aucune
+    valeur statistique et « 60 % sous la médiane » ne veut rien dire. Neutraliser ce minimum
+    ferait crier à l'aubaine dès le deuxième jour de service."""
+    trajet = _trajet(session)
+    _historique(session, trajet, dict.fromkeys(range(1, 11), 1000))
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=400, provider="google_flights")
+    )
+    session.commit()
+
+    assert 'class="trouvaille"' not in client.get("/").text
+
+
+def test_un_historique_trop_court_est_annonce_comme_en_constitution(client, session):
+    """Contrepartie visible du test précédent : le tableau de bord doit dire *pourquoi* il ne se
+    prononce pas, sinon une colonne vide se confond avec un écart nul."""
+    trajet = _trajet(session)
+    _historique(session, trajet, dict.fromkeys(range(1, 6), 1000))
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=900, provider="google_flights")
+    )
+    session.commit()
+
+    assert "historique en constitution" in client.get("/").text
+
+
+def test_le_tableau_de_bord_affiche_lecart_a_la_mediane_et_la_mediane(client, session):
+    trajet = _trajet(session)
+    _historique(session, trajet, dict.fromkeys(range(1, 15), 1000))
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=900, provider="google_flights")
+    )
+    session.commit()
+
+    corps = client.get("/").text
+
+    assert "10 %" in corps
+    assert "médiane 1000 $" in corps
+    assert "historique en constitution" not in corps
+
+
+def test_la_mediane_de_reference_couvre_90_jours(client, session):
+    """La fenêtre de comparaison est celle des réglages, pas une valeur commode. Une fenêtre
+    rétrécie suivrait les prix récents au lieu de servir de référence : un mois de hausse
+    deviendrait la nouvelle normale et plus rien ne ressortirait comme aubaine."""
+    trajet = _trajet(session)
+    _historique(
+        session,
+        trajet,
+        {**dict.fromkeys(range(1, 8), 400), **dict.fromkeys(range(8, 31), 1000)},
+    )
+    session.add(
+        DailyLow(route_id=trajet.id, day=AUJOURDHUI, price_cad=900, provider="google_flights")
+    )
+    session.commit()
+
+    corps = client.get("/").text
+
+    # Sur 90 jours la médiane des 30 relevés vaut 1000 ; sur les 7 derniers seulement, elle
+    # tomberait à 400 et l'écart affiché basculerait de « 10 % » à « -125 % ».
+    assert "médiane 1000 $" in corps
 
 
 def test_le_tableau_de_bord_affiche_un_graphe_par_trajet(client, session):
@@ -177,6 +274,10 @@ def test_la_page_sante_liste_les_sources(client, session):
     # `transat` est activée dans la fixture mais n'a aucune ligne en base : une source qui n'a
     # jamais tourné doit tout de même apparaître, sans quoi une panne totale serait invisible.
     assert "transat" in corps
+    # Le compte d'offres du dernier passage est le seul chiffre qui distingue une source en panne
+    # franche d'une source qui répond « 200 OK » sans rien rapporter — la panne silencieuse que
+    # le design nomme comme son risque principal.
+    assert ">42<" in corps
 
 
 def test_la_page_sante_montre_les_echecs_et_la_derniere_erreur(client, session):
