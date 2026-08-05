@@ -1,13 +1,12 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from sqlmodel import select
 
 from scrappervol.config import Settings
 from scrappervol.core.types import DatePolicyKind, FlightOffer
 from scrappervol.scheduler.jobs import run_scan
 from scrappervol.storage import repo
-from sqlmodel import select
-
 from scrappervol.storage.models import Alert, AlertKind, DailyLow, Route
 
 MAINTENANT = datetime(2026, 8, 4, 14, 0, tzinfo=UTC)
