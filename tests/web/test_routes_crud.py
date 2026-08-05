@@ -42,6 +42,7 @@ def test_creation_dun_trajet(client, session):
     assert trajet.origins == ["YUL", "YQB"]
     assert trajet.policy_params["flex_days"] == 3
     assert trajet.active is True
+    assert trajet.created_at is not None
 
 
 def test_un_formulaire_invalide_est_refuse_et_explique(client, session):

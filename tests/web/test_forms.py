@@ -1,6 +1,6 @@
 import pytest
 
-from scrappervol.core.types import DatePolicyKind
+from scrappervol.core.types import DatePolicyKind, TripType
 from scrappervol.web.forms import (
     RouteFormError,
     build_policy_params,
@@ -85,6 +85,13 @@ def test_un_code_daeroport_mal_forme_leve():
         parse_airports("YUL, Paris")
 
 
+def test_un_code_de_deux_lettres_leve():
+    """Un code IATA fait toujours trois lettres ; en accepter deux laisserait passer une saisie
+    tronquée droit vers une source qui répondrait « aucun vol » sans jamais le signaler."""
+    with pytest.raises(RouteFormError, match="trois lettres"):
+        parse_airports("YU")
+
+
 def test_une_duree_de_sejour_negative_leve():
     with pytest.raises(RouteFormError, match="nuits"):
         build_policy_params(DatePolicyKind.FLEXIBLE, {"sejour_min": "-3", "sejour_max": "14"})
@@ -118,6 +125,21 @@ def test_un_sejour_min_superieur_au_max_leve():
         build_policy_params(
             DatePolicyKind.FLEXIBLE, {"horizon_mois": "12", "sejour_min": "20", "sejour_max": "7"}
         )
+
+
+def test_un_sejour_min_egal_au_max_est_accepte():
+    """Un séjour de durée fixe (min == max) est une saisie légitime, pas une inversion."""
+    params = build_policy_params(
+        DatePolicyKind.FLEXIBLE, {"horizon_mois": "12", "sejour_min": "8", "sejour_max": "8"}
+    )
+
+    assert params["sejour_min"] == params["sejour_max"] == 8
+
+
+def test_les_valeurs_par_defaut_de_la_politique_flexible():
+    params = build_policy_params(DatePolicyKind.FLEXIBLE, {})
+
+    assert params == {"horizon_mois": 12, "sejour_min": 7, "sejour_max": 14}
 
 
 def test_le_formulaire_complet_produit_les_champs_du_modele():
@@ -177,3 +199,77 @@ def test_un_seuil_dexception_hors_bornes_leve():
                 "exception_threshold": "1.5",
             }
         )
+
+
+def test_un_seuil_dexception_a_la_borne_leve():
+    """Les bornes 0 et 1 sont exclues : un seuil de 1 ne détecterait plus jamais d'aberration.
+
+    Le reste du formulaire doit être par ailleurs valide (retour fourni) : sinon une levée par
+    le garde-fou aller-retour masquerait un relâchement de *cette* vérification-ci.
+    """
+    with pytest.raises(RouteFormError, match="seuil"):
+        validate_route_form(
+            {
+                "label": "X",
+                "origins": "YUL",
+                "destinations": "CDG",
+                "date_policy": "fixed",
+                "depart": "2027-03-12",
+                "retour": "2027-03-22",
+                "exception_threshold": "1",
+            }
+        )
+
+
+def test_le_seuil_dexception_par_defaut_est_040():
+    champs = validate_route_form(
+        {
+            "label": "X",
+            "origins": "YUL",
+            "destinations": "CDG",
+            "date_policy": "fixed",
+            "depart": "2027-03-12",
+            "retour": "2027-03-22",
+        }
+    )
+
+    assert champs["exception_threshold"] == 0.40
+
+
+def test_les_passagers_par_defaut_sont_un():
+    champs = validate_route_form(
+        {
+            "label": "X",
+            "origins": "YUL",
+            "destinations": "CDG",
+            "date_policy": "fixed",
+            "depart": "2027-03-12",
+            "retour": "2027-03-22",
+        }
+    )
+
+    assert champs["passengers"] == 1
+
+
+def test_le_type_de_trajet_par_defaut_est_aller_retour():
+    """Le défaut de `trip_type` dans `validate_route_form` doit rester cohérent avec celui de
+    `build_policy_params` : c'est cette cohérence qui fait fonctionner le garde-fou sur la date
+    de retour manquante quand le champ `trip_type` n'est simplement pas soumis."""
+    champs = validate_route_form(
+        {
+            "label": "X",
+            "origins": "YUL",
+            "destinations": "CDG",
+            "date_policy": "fixed",
+            "depart": "2027-03-12",
+            "retour": "2027-03-22",
+        }
+    )
+
+    assert champs["trip_type"] is TripType.ROUND_TRIP
+
+
+def test_la_politique_de_dates_par_defaut_est_flexible():
+    champs = validate_route_form({"label": "X", "origins": "YUL", "destinations": "CDG"})
+
+    assert champs["date_policy"] is DatePolicyKind.FLEXIBLE
