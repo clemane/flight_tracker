@@ -77,9 +77,7 @@ def test_le_smtp_mailer_nauthentifie_pas_avec_des_identifiants_partiels():
     renseigné, l'authentification est incomplète et ne doit pas être tentée. Un `OU` à la
     place laisserait passer un `login("utilisateur", "")` — un échec d'authentification
     silencieusement transformé en tentative bancale plutôt que refusée d'entrée."""
-    reglages = Settings(
-        smtp_host="smtp.example.com", smtp_user="utilisateur", smtp_password=""
-    )
+    reglages = Settings(smtp_host="smtp.example.com", smtp_user="utilisateur", smtp_password="")
     session = MagicMock()
 
     with patch("scrappervol.notify.mailer.smtplib.SMTP") as smtp:
