@@ -51,11 +51,15 @@ def capture_google_flights() -> None:
 
 
 def capture_transat() -> None:
-    """Rejoue le pilotage de formulaire éprouvé à la tâche 11 et fige le HTML obtenu.
+    """Rejoue le pilotage de formulaire jusqu'à la page récapitulative `/summary` et fige le HTML
+    obtenu.
 
     Contrairement à google_flights, Air Transat n'a pas d'API : la fixture est la page HTML brute
-    de résultats, pas une structure déjà analysée. Le jour où ce script est relancé, il touche le
-    vrai site une fois — reste économe : ce n'est pas fait pour tourner en boucle.
+    de la page récapitulative, pas une structure déjà analysée. `_piloter_recherche` mène le
+    formulaire jusqu'à `/summary` (choix du tarif le plus bas pour l'aller puis le retour,
+    franchissement de la modale d'upsell) — c'est le même parcours que celui utilisé en production
+    par `TransatProvider._fetch`. Le jour où ce script est relancé, il touche le vrai site une fois
+    — reste économe : ce n'est pas fait pour tourner en boucle.
     """
     from scrappervol.config import Settings
     from scrappervol.core.types import SearchQuery
@@ -74,13 +78,12 @@ def capture_transat() -> None:
         timeout_ms=60_000,
     )
 
-    # capture_transat() n'a pas été relancé pour produire tests/fixtures/transat_yul_cun.html : le
-    # fichier versionné vient d'une capture réelle et vérifiée obtenue lors de la reconnaissance de
-    # la tâche 11 (deux passages identiques, à cinq minutes d'intervalle, chacun avec trois prix CAD
-    # distincts — voir task-11-report.md). Cette fonction sert à en obtenir une nouvelle le jour où
-    # la forme de la page aura changé.
+    # tests/fixtures/transat_summary_yul_cun.html, le fichier versionné, vient d'une capture réelle
+    # et vérifiée obtenue lors de la reconnaissance de la tâche 21 (deux passages indépendants ayant
+    # tous deux rendu 533,41 CAD — voir task-21-brief.md). Cette fonction sert à en obtenir une
+    # nouvelle le jour où la forme de la page aura changé.
     FIXTURES.mkdir(parents=True, exist_ok=True)
-    cible = FIXTURES / "transat_yul_cun.html"
+    cible = FIXTURES / "transat_summary_yul_cun.html"
     cible.write_text(html, encoding="utf-8")
     print(f"écrit : {cible}  ({len(html)} caractères)")
 

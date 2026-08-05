@@ -33,18 +33,15 @@ def test_enabled_providers_est_une_liste(monkeypatch):
     assert settings.enabled_providers == ["google_flights", "transat"]
 
 
-def test_transat_nest_pas_active_par_defaut(monkeypatch):
-    """La source Air Transat existe et est testée, mais reste hors du réglage par défaut.
-
-    Sa page de résultats ne donne que le prix du vol aller, alors que `daily_low` est indexé par
-    (route_id, day) sans le provider et ne conserve que le prix le plus bas : un prix aller-seul y
-    deviendrait le plus bas permanent du trajet, effondrant la médiane de référence et rendant
-    toute aubaine aller-retour indétectable. Ce test verrouille cette décision — sans lui, un
-    ajout distrait dans la liste rétablirait la panne silencieuse sans que rien ne le signale.
+def test_transat_est_active_par_defaut(monkeypatch):
+    """Depuis la tâche 21, Air Transat lit le total aller-retour sur la page récapitulative
+    `/summary` (au tarif le moins cher), plus le prix d'aller seul de l'étape `/departure` qui
+    avait justifié son retrait d'`ENABLED_PROVIDERS` à la tâche 11 : ce test verrouille la
+    réactivation, pour qu'un retrait distrait de la liste ne passe pas inaperçu.
     """
     monkeypatch.delenv("ENABLED_PROVIDERS", raising=False)
 
     settings = Settings()
 
-    assert "transat" not in settings.enabled_providers
+    assert "transat" in settings.enabled_providers
     assert "google_flights" in settings.enabled_providers

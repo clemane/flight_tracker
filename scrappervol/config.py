@@ -35,13 +35,16 @@ class Settings(BaseSettings):
     request_pause_min_s: int = 5
     request_pause_max_s: int = 20
 
-    # Une seule source active, et c'est délibéré.
+    # Deux sources actives : Google Flights et Air Transat.
     #
-    # `transat` : la page pilotée à la tâche 11 n'affiche que le prix du vol aller (« à partir
-    # de »), pas un total aller-retour. Comme `daily_low` est indexé par (route_id, day) sans le
-    # provider et ne conserve que le prix le plus bas, un prix aller-seul deviendrait le plus bas
-    # permanent du trajet : médiane de référence effondrée, aubaines aller-retour indétectables,
-    # le tout sans qu'aucun voyant ne passe au rouge. Le code de la source reste en place.
+    # `transat` : la page pilotée à la tâche 11 s'arrêtait à l'étape « departure », qui n'affiche
+    # que le prix du vol aller (« à partir de »), pas un total aller-retour — d'où son retrait
+    # d'`ENABLED_PROVIDERS` à l'époque. Depuis la tâche 21, le pilotage se poursuit jusqu'à la page
+    # récapitulative `/summary`, où `.flight-container-total .price` donne le total aller-retour
+    # déjà choisi (au tarif le moins cher) : `parse_summary` en tire une seule offre par relevé, au
+    # même titre qu'un total Google Flights. Le piège d'origine — un prix aller-seul qui
+    # deviendrait le plus bas permanent du trajet, `daily_low` étant indexé par (route_id, day)
+    # sans le provider — ne s'applique plus.
     #
     # `air_canada` : source définitivement écartée. L'essai de la tâche 12 a piloté le formulaire
     # sans peine, mais chaque soumission retombait sur une page d'erreur (BKRW-DBS-999) produite
@@ -49,10 +52,10 @@ class Settings(BaseSettings):
     # relevé. Le parcours est protégé contre l'automatisation, le contourner est hors sujet.
     # Compte rendu : docs/superpowers/notes/2026-08-05-air-canada-abandon.md
     #
-    # Google Flights renvoie déjà les vols Air Transat et Air Canada, à un prix aller-retour
-    # agrégé donc comparable — c'est cette comparabilité, pas le nombre de sources, qui fait la
-    # valeur de la détection.
-    enabled_providers: Annotated[list[str], NoDecode] = ["google_flights"]
+    # Google Flights renvoie déjà les vols Air Canada, à un prix aller-retour agrégé donc
+    # comparable — c'est cette comparabilité, pas le nombre de sources, qui fait la valeur de la
+    # détection pour cette route restée hors de portée.
+    enabled_providers: Annotated[list[str], NoDecode] = ["google_flights", "transat"]
 
     @field_validator("enabled_providers", mode="before")
     @classmethod

@@ -30,21 +30,21 @@ machine : l'application n'a pas d'authentification, et n'a pas vocation à être
 
 ## Fonctionnement
 
-Une seule source est active par défaut : **Google Flights**, interrogée toutes les 4 h. Chaque
-passage relève les prix des trajets actifs, met à jour le plus bas du jour et compare à la médiane
-des 90 derniers jours.
+Deux sources sont actives par défaut : **Google Flights**, interrogée toutes les 4 h, et **Air
+Transat**, toutes les 6 h. Chaque passage relève les prix des trajets actifs, met à jour le plus
+bas du jour et compare à la médiane des 90 derniers jours.
 
-Le code en contient deux autres, désactivées, et il faut savoir pourquoi avant de les rallumer :
+Le code en contient une troisième, désactivée, et il faut savoir pourquoi avant de la rallumer :
 
 | Source | État | Raison |
 |---|---|---|
 | Google Flights | active, 4 h | — |
-| Air Transat | présente mais retirée de `ENABLED_PROVIDERS` | elle ne publie qu'un prix d'**aller simple**. Ce prix, environ moitié moindre qu'un aller-retour, deviendrait le plus bas du trajet et effondrerait la médiane de référence : plus aucune aubaine ne serait jamais détectée, et le tableau de bord resterait vert. La rallumer suppose d'abord de relever un prix d'aller-retour complet. |
+| Air Transat | active, 6 h | le prix relevé est le **total aller-retour** lu sur la page récapitulative `/summary`, au tarif le moins cher disponible — pas un prix d'aller simple : le formulaire est piloté jusqu'à cette étape avant de lire le prix. |
 | Air Canada | abandonnée | le site refuse toute soumission automatisée (`BKRW-DBS-999`, puis 403 Akamai sur l'URL directe). Compte rendu dans `docs/superpowers/notes/2026-08-05-air-canada-abandon.md`. |
 
-Une seule source signifie qu'une panne de Google Flights arrête toute la collecte. C'est le risque
-assumé de cette version ; la page Santé et le digest quotidien existent précisément pour qu'il ne
-passe pas inaperçu.
+Deux sources actives limitent, sans l'éliminer, le risque qu'une panne isolée arrête toute la
+collecte : Air Canada reste hors service, et la page Santé et le digest quotidien existent
+précisément pour qu'une panne de l'une des deux sources actives ne passe pas inaperçue.
 
 Un courriel de synthèse part chaque jour à 18 h, heure de Montréal, même les jours sans rien de
 notable. Un courriel immédiat part si un prix descend à plus de 40 % sous la médiane — sous réserve
