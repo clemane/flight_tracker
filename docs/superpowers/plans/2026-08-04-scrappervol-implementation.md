@@ -5461,6 +5461,29 @@ def test_la_meme_aberration_au_passage_suivant_reste_silencieuse(
     assert len(faux_mailer.envois) == 1
 
 
+def test_un_prix_a_peine_sous_la_mediane_ne_declenche_rien(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Verrouille le seuil relatif de 40 %, que rien n'éprouve autrement dans ce fichier.
+
+    Tous les cas d'alerte ici sont à 299 contre 600, soit 50 % sous la médiane ; tous les cas
+    silencieux sont écartés bien avant d'atteindre le seuil — par l'historique trop court, par le
+    plancher de crédibilité ou par l'anti-répétition. Un seuil relâché à 5 % laisserait donc la
+    suite entièrement verte. 550 contre 600 fait 8,3 % : sous la médiane, mais très loin d'être
+    une aubaine.
+    """
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    resultat = run_scan(session, fausse_source(name="google_flights", offres=[(550, "Air Transat")]),
+                        reglages, faux_mailer, MAINTENANT, sleeper=dormir)
+
+    assert resultat.exceptions_sent == 0
+    assert faux_mailer.envois == []
+    assert resultat.offers_recorded == 1  # le prix est bien relevé, il n'est simplement pas alerté
+
+
 def test_aucune_alerte_sans_historique_suffisant(
     session, reglages, fausse_source, faux_mailer, sans_pause
 ):
@@ -5526,6 +5549,7 @@ def test_un_echec_de_source_ne_leve_pas_et_nenvoie_rien(
 
     assert resultat.failed is True
     assert faux_mailer.envois == []
+    assert resultat.offers_recorded == 0  # une source en échec ne laisse pas d'offres partielles
 
 
 def test_un_echec_denvoi_nempeche_pas_le_reste_du_passage(
@@ -5546,6 +5570,35 @@ def test_un_echec_denvoi_nempeche_pas_le_reste_du_passage(
 
     assert resultat.offers_recorded == 1
     assert repo.daily_low_for(session, trajet.id, AUJOURDHUI) is not None
+
+
+def test_une_alerte_non_envoyee_est_retentee_au_passage_suivant(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Sans cette garde, une panne SMTP passagère coûterait l'aubaine définitivement.
+
+    L'alerte serait marquée comme envoyée alors qu'aucun courriel n'est parti, et
+    `exception_already_sent` — qui ne distingue pas un envoi réussi d'un envoi échoué — la ferait
+    taire à tous les passages suivants. Rien ne la remettrait en file, car il n'y a pas de file :
+    les alertes sont recalculées à chaque passage à partir des offres du moment. C'est ce test qui
+    impose d'enregistrer l'alerte **après** l'envoi et non avant.
+    """
+
+    class MailerCasse:
+        def send(self, mail, to):
+            raise RuntimeError("SMTP injoignable")
+
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+    run_scan(session, fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+             reglages, MailerCasse(), MAINTENANT, sleeper=dormir)
+
+    resultat = run_scan(session, fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+                        reglages, faux_mailer, MAINTENANT + timedelta(hours=4), sleeper=dormir)
+
+    assert resultat.exceptions_sent == 1
+    assert len(faux_mailer.envois) == 1
 ```
 
 - [ ] **Étape 2 : lancer le test et vérifier l'échec**
@@ -5671,6 +5724,12 @@ def _traiter_exception(
         )
     )
 
+    try:
+        mailer.send(courriel, settings.alert_to)
+    except Exception as erreur:  # noqa: BLE001 — un SMTP en panne ne doit pas coûter les données
+        logger.error("alerte non envoyée, sera retentée au prochain passage : %s", erreur)
+        return False
+
     repo.record_alert(
         session,
         route.id,
@@ -5680,17 +5739,19 @@ def _traiter_exception(
         now,
     )
 
-    try:
-        mailer.send(courriel, settings.alert_to)
-    except Exception as erreur:  # noqa: BLE001 — un SMTP en panne ne doit pas coûter les données
-        logger.error("alerte non envoyée : %s", erreur)
-        return False
-
     return True
 ```
 
-L'alerte est journalisée **avant** l'envoi, délibérément : si le serveur SMTP tombe en boucle, mieux
-vaut manquer une alerte qu'en envoyer quarante quand il revient.
+L'alerte n'est enregistrée qu'**après** un envoi réussi. L'ordre inverse paraît plus prudent — il
+éviterait qu'un serveur SMTP en panne fasse partir quarante courriels d'un coup à son retour — mais
+cette crainte n'a pas d'objet ici : rien n'est mis en file d'attente. Les alertes sont recalculées à
+chaque passage à partir des offres du moment, et `exception_already_sent` ne distingue pas un envoi
+réussi d'un envoi échoué. Enregistrer d'abord signifierait donc : l'envoi échoue, l'alerte est
+néanmoins marquée comme envoyée, et l'aubaine est perdue définitivement — en silence, alors même que
+la panne silencieuse est le risque principal identifié par le design.
+
+L'ordre retenu accepte le défaut symétrique, bien plus bénin : si l'envoi réussit mais que le commit
+échoue, l'alerte pourra partir une seconde fois au passage suivant.
 
 - [ ] **Étape 4 : vérifier que les tests passent**
 
@@ -5699,7 +5760,7 @@ vaut manquer une alerte qu'en envoyer quarante quand il revient.
 ./dev lint
 ```
 
-Attendu : 9 tests passés.
+Attendu : 11 tests passés.
 
 - [ ] **Étape 5 : committer**
 
