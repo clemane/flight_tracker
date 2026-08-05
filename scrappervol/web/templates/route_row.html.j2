@@ -1,0 +1,17 @@
+<tr>
+  <td>{{ route.label }}</td>
+  <td class="discret">{{ route.origins | join(', ') }} → {{ route.destinations | join(', ') }}</td>
+  <td class="discret">{{ route.date_policy }}
+    {% if route.target_price_cad %}<br>cible {{ route.target_price_cad }} ${% endif %}</td>
+  <td>{% if route.active %}actif{% else %}<span class="discret">désactivé</span>{% endif %}</td>
+  <td>
+    <a href="/routes/{{ route.id }}/edit">modifier</a>
+    <form method="post" action="/routes/{{ route.id }}/toggle" style="display:inline">
+      <button type="submit">{% if route.active %}désactiver{% else %}activer{% endif %}</button>
+    </form>
+    <form method="post" action="/routes/{{ route.id }}/delete" style="display:inline"
+          onsubmit="return confirm('Supprimer ce trajet et son historique ?')">
+      <button type="submit">supprimer</button>
+    </form>
+  </td>
+</tr>

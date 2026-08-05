@@ -1,0 +1,17 @@
+{% extends "base.html.j2" %}
+{% block titre_page %}Trajets{% endblock %}
+{% block contenu %}
+<p><a href="/routes/new">Nouveau trajet</a></p>
+{% if not routes %}
+  <p>Aucun trajet pour l'instant.</p>
+{% else %}
+<table>
+  <thead><tr><th>Libellé</th><th>Trajet</th><th>Dates</th><th>État</th><th></th></tr></thead>
+  <tbody>
+  {% for route in routes %}
+    {% include "route_row.html.j2" %}
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
