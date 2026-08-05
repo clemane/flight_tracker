@@ -202,7 +202,24 @@ def test_un_trajet_en_construction_ne_compte_pas_comme_trouvaille():
         providers=[_sante()],
     )
 
+    rendu = render_digest(donnees)
+
     assert donnees.find_count == 0
+    # Le compteur ne suffit pas : le badge est posé par les gabarits, pas par `find_count`.
+    # Le tiret cadratin distingue le badge du « 0 trouvaille » qui figure déjà dans le titre.
+    assert "— trouvaille" not in rendu.html
+    assert "— TROUVAILLE" not in rendu.text
+
+
+def test_un_trajet_avec_historique_porte_le_badge_de_trouvaille():
+    """Contrepartie du test précédent : sans elle, un gabarit qui n'afficherait jamais le
+    badge passerait aussi."""
+    donnees = DigestData(day=JOUR, blocks=[_bloc()], providers=[_sante()])
+
+    rendu = render_digest(donnees)
+
+    assert "— trouvaille" in rendu.html
+    assert "— TROUVAILLE" in rendu.text
 
 
 def test_le_pied_porte_toujours_letat_des_sources():
