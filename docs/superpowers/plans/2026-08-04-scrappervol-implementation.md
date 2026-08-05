@@ -7948,7 +7948,9 @@ L'ordre de déclaration compte : `/routes/new` et `/routes/policy-fields` doiven
 ./dev lint
 ```
 
-Attendu : 49 tests passés dans `tests/web/` (20 de la tâche 18, 18 de formulaires, 11 de CRUD).
+Attendu : 57 tests passés dans `tests/web/` (28 livrés par la tâche 18, 18 de formulaires, 11 de CRUD).
+La tâche 18 en a livré 28 et non les 20 prévus ici : trois ajouts de son auteur puis cinq issus
+de la campagne de mutation. Suite complète attendue : 317.
 
 - [ ] **Étape 7 : committer**
 
