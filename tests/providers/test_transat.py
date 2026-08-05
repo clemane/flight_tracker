@@ -10,6 +10,8 @@ from scrappervol.providers.transat import (
     TransatProvider,
     _fare_btn_moins_cher,
     _franchir_modale_upsell,
+    _lien,
+    _piloter_recherche,
     _selectionner_tarif,
     _sous_tarif_moins_cher,
     _verifier_etape_sommaire,
@@ -691,6 +693,80 @@ def test_le_provider_refuse_plusieurs_passagers_avant_douvrir_un_navigateur(monk
 
     with pytest.raises(ProviderError, match="passager"):
         TransatProvider()._fetch(requete_deux_adultes)
+
+
+def test_le_deep_link_reproduit_la_recherche_aller_retour_de_la_requete():
+    """Le lien joint à l'offre est ce sur quoi on clique depuis le courriel d'alerte : il doit
+    rouvrir *cette* recherche. `startswith("https://www.airtransat.com/")` ne prouve rien —
+    une origine et une destination interverties, ou l'étape `/summary` (inatteignable sans la
+    session de recherche) à la place de `/departure`, passent cette vérification et mènent
+    l'utilisateur sur un vol qui n'est pas celui qu'on lui a annoncé.
+    """
+    lien = _lien(REQUETE_REELLE)
+
+    assert lien.startswith("https://www.airtransat.com/fr-CA/flight-search-result/departure?")
+    assert "gateway=AIRPORT_YUL-AIRPORT_CUN" in lien
+    assert "date=2026-11-03_2026-11-10" in lien
+    assert "flightType=RT" in lien
+
+
+class _PagePilotage:
+    """Page complaisante : tout sélecteur existe, est visible et se laisse cliquer.
+
+    Sert à vérifier l'enchaînement de `_piloter_recherche`, pas le balisage — les étapes qui
+    dépendent du vrai DOM (`_remplir_aeroport`, `_choisir_date_calendrier`, `_selectionner_tarif`)
+    sont remplacées par le test.
+    """
+
+    def __init__(self):
+        self.url = "https://www.airtransat.com/fr-CA/flight-search-result/summary"
+
+    def locator(self, _selecteur: str) -> "_PagePilotage":
+        return self
+
+    def count(self) -> int:
+        return 1
+
+    def nth(self, _i: int) -> "_PagePilotage":
+        return self
+
+    def is_visible(self, timeout: int | None = None) -> bool:
+        return True
+
+    def click(self, timeout: int | None = None) -> None:
+        pass
+
+    def wait_for_timeout(self, _ms: int) -> None:
+        pass
+
+    def wait_for_load_state(self, _state: str, timeout: int | None = None) -> None:
+        pass
+
+    def wait_for_selector(self, _selecteur: str, timeout: int | None = None) -> None:
+        pass
+
+
+def test_le_pilotage_choisit_un_tarif_a_laller_puis_au_retour(monkeypatch):
+    """Le total aller-retour n'existe que sur `/summary`, et `/summary` ne s'atteint qu'après
+    avoir choisi un tarif aux *deux* étapes. S'arrêter après l'aller laisse le parcours sur
+    `/return` : c'est exactement la panne de la tâche 11, où seul un prix d'aller simple était
+    relevé. Ce test verrouille la complétude du parcours, dans son ordre.
+    """
+    etapes = []
+    monkeypatch.setattr(
+        "scrappervol.providers.transat._selectionner_tarif",
+        lambda _page, etape: etapes.append(etape),
+    )
+    monkeypatch.setattr(
+        "scrappervol.providers.transat._remplir_aeroport", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "scrappervol.providers.transat._choisir_date_calendrier", lambda *a, **k: True
+    )
+
+    _piloter_recherche(_PagePilotage(), REQUETE_REELLE)
+
+    assert etapes == ["aller", "retour"]
 
 
 @pytest.mark.live
