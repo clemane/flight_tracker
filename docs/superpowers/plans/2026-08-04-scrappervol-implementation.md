@@ -4653,9 +4653,29 @@ def test_le_digest_montre_le_prix_le_transporteur_et_le_lien():
 
 
 def test_le_digest_affiche_lecart_a_la_mediane():
-    rendu = render_digest(DigestData(day=JOUR, blocks=[_bloc()], providers=[_sante()]))
+    """L'écart choisi (37 %) n'apparaît nulle part ailleurs dans le rendu.
 
-    assert "20" in rendu.html
+    Une assertion `"20" in rendu.html` serait vraie sans que l'écart soit rendu du tout : la date
+    du jour (2026-08-04) et la date de départ (2027-03-12) contiennent toutes deux "20".
+    """
+    bloc = _bloc(gap_vs_median=0.37, median_price=613.0)
+    rendu = render_digest(DigestData(day=JOUR, blocks=[bloc], providers=[_sante()]))
+
+    assert "37 %" in rendu.html
+    assert "613" in rendu.html
+    assert "37 %" in rendu.text
+
+
+def test_le_digest_dit_au_dessus_quand_le_prix_depasse_la_mediane():
+    """Le digest liste tous les trajets actifs, pas seulement les trouvailles : la plupart des
+    soirs, la plupart des prix sont au-dessus de leur médiane. Un gabarit qui écrit toujours
+    « sous la médiane » afficherait alors « -15 % sous la médiane », qui ne veut rien dire."""
+    bloc = _bloc(gap_vs_median=-0.15, is_find=False)
+    rendu = render_digest(DigestData(day=JOUR, blocks=[bloc], providers=[_sante()]))
+
+    assert "15 % au-dessus" in rendu.html
+    assert "-15" not in rendu.html
+    assert "15 % au-dessus" in rendu.text
 
 
 def test_les_trajets_sont_tries_par_ecart_decroissant():
@@ -4664,6 +4684,13 @@ def test_les_trajets_sont_tries_par_ecart_decroissant():
     donnees = DigestData(day=JOUR, blocks=[faible, forte], providers=[_sante()])
 
     assert [b.label for b in donnees.sorted_blocks] == ["Forte", "Faible"]
+
+    # L'ordre doit se retrouver dans le rendu, pas seulement dans la propriété : un gabarit qui
+    # itérerait sur `data.blocks` au lieu de `data.sorted_blocks` laisserait l'assertion ci-dessus
+    # verte tout en envoyant un digest mal trié.
+    rendu = render_digest(donnees)
+    assert rendu.html.index("Forte") < rendu.html.index("Faible")
+    assert rendu.text.index("Forte") < rendu.text.index("Faible")
 
 
 def test_un_trajet_sans_historique_significatif_est_signale_et_non_classe():
@@ -4739,6 +4766,29 @@ def test_la_version_texte_nest_pas_echappee():
 
     assert "Paris l'hiver" in rendu.text
     assert "&#39;" not in rendu.text
+
+
+def test_la_version_html_est_echappee():
+    """Le pendant du test précédent, et il compte autant.
+
+    `select_autoescape(..., default=False)` n'active l'échappement que pour les extensions
+    listées : une extension mal orthographiée le désactive partout sans que rien ne le signale.
+    Or `airline` vient du scraping et `label` est saisi par l'utilisateur à la tâche 19 — ni l'un
+    ni l'autre n'est du contenu maîtrisé.
+    """
+    rendu = render_digest(
+        DigestData(
+            day=JOUR,
+            blocks=[_bloc(label="<script>alert(1)</script>", airline="A & B")],
+            providers=[_sante()],
+        )
+    )
+
+    assert "<script>" not in rendu.html
+    assert "&lt;script&gt;" in rendu.html
+    assert "A &amp; B" in rendu.html
+    # ... et le texte, lui, reste brut.
+    assert "<script>alert(1)</script>" in rendu.text
 
 
 def test_le_sujet_dexception_porte_la_destination_le_prix_et_lecart():
@@ -4818,7 +4868,9 @@ Attendu : `ModuleNotFoundError: No module named 'scrappervol.notify.render'`.
       <p style="margin:4px 0;color:#888;">historique en constitution</p>
     {% else %}
       <p style="margin:4px 0;color:#555;">
-        {{ (bloc.gap_vs_median * 100) | round | int }} % sous la médiane de 90 jours
+        {# sur une seule ligne : un saut de ligne entre le pourcentage et « sous / au-dessus de »
+           casserait toute assertion portant sur la formule complète. #}
+        {{ (bloc.gap_vs_median | abs * 100) | round | int }} % {{ 'sous' if bloc.gap_vs_median >= 0 else 'au-dessus de' }} la médiane de 90 jours
         ({{ bloc.median_price | round | int }} $)
         {% if bloc.gap_vs_yesterday is not none %}
           · {{ bloc.gap_vs_yesterday }} $ par rapport à hier
@@ -4860,7 +4912,7 @@ Aucun trajet actif.
 {% else %}  {{ bloc.price_cad }} $ — {{ bloc.airline }} · {{ bloc.origin }} vers {{ bloc.destination }}
   {{ bloc.depart_date }}{% if bloc.return_date %} au {{ bloc.return_date }}{% endif %} · source {{ bloc.provider }}
 {% if bloc.history_building %}  historique en constitution
-{% else %}  {{ (bloc.gap_vs_median * 100) | round | int }} % sous la médiane de 90 jours ({{ bloc.median_price | round | int }} $){% if bloc.gap_vs_yesterday is not none %} · {{ bloc.gap_vs_yesterday }} $ vs hier{% endif %}
+{% else %}  {{ (bloc.gap_vs_median | abs * 100) | round | int }} % {{ 'sous' if bloc.gap_vs_median >= 0 else 'au-dessus de' }} la médiane de 90 jours ({{ bloc.median_price | round | int }} $){% if bloc.gap_vs_yesterday is not none %} · {{ bloc.gap_vs_yesterday }} $ vs hier{% endif %}
 
 {% endif %}  {{ bloc.deep_link }}
 {% endif %}
