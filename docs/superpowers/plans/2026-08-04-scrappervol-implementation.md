@@ -7283,6 +7283,35 @@ def test_fixed_sans_date_de_depart_leve():
         build_policy_params(DatePolicyKind.FIXED, {"depart": ""})
 
 
+def test_un_aller_retour_sans_date_de_retour_leve():
+    """Le garde-fou central de l'application : ScrapperVol surveille des voyages de vacances,
+    donc des aller-retours. Sans retour, `_dates_fixed` interroge un aller simple et son prix,
+    deux fois plus bas, s'installe comme référence du trajet."""
+    with pytest.raises(RouteFormError, match="aller simple"):
+        build_policy_params(
+            DatePolicyKind.FIXED,
+            {"depart": "2027-03-12", "retour": "", "trip_type": "round_trip"},
+        )
+
+
+def test_un_aller_simple_assume_se_passe_de_date_de_retour():
+    params = build_policy_params(
+        DatePolicyKind.FIXED, {"depart": "2027-03-12", "trip_type": "one_way"}
+    )
+
+    assert params == {"depart": "2027-03-12"}
+
+
+def test_un_code_daeroport_mal_forme_leve():
+    with pytest.raises(RouteFormError, match="trois lettres"):
+        parse_airports("YUL, Paris")
+
+
+def test_une_duree_de_sejour_negative_leve():
+    with pytest.raises(RouteFormError, match="nuits"):
+        build_policy_params(DatePolicyKind.FLEXIBLE, {"sejour_min": "-3", "sejour_max": "14"})
+
+
 def test_les_parametres_window_sont_construits():
     params = build_policy_params(
         DatePolicyKind.WINDOW,
@@ -7342,7 +7371,8 @@ def test_le_formulaire_complet_produit_les_champs_du_modele():
 def test_les_champs_facultatifs_vides_deviennent_none():
     champs = validate_route_form(
         {"label": "X", "origins": "YUL", "destinations": "CDG", "date_policy": "fixed",
-         "depart": "2027-03-12", "max_stops": "", "target_price_cad": ""}
+         "depart": "2027-03-12", "retour": "2027-03-22", "max_stops": "",
+         "target_price_cad": ""}
     )
 
     assert champs["max_stops"] is None
@@ -7366,6 +7396,7 @@ import re
 from scrappervol.core.types import DatePolicyKind, TripType
 
 _SEPARATEURS = re.compile(r"[,\s;]+")
+_CODE_IATA = re.compile(r"^[A-Z]{3}$")
 
 
 class RouteFormError(ValueError):
@@ -7373,7 +7404,19 @@ class RouteFormError(ValueError):
 
 
 def parse_airports(text: str) -> list[str]:
-    return [code.strip().upper() for code in _SEPARATEURS.split(text or "") if code.strip()]
+    """Codes IATA normalisés.
+
+    La forme est vérifiée ici parce qu'un code fantaisiste ne casse rien de visible : la source
+    répond « aucun vol », le trajet reste vert sur le tableau de bord et l'on croit surveiller un
+    voyage qui n'est jamais interrogé.
+    """
+    codes = [code.strip().upper() for code in _SEPARATEURS.split(text or "") if code.strip()]
+    invalides = [code for code in codes if not _CODE_IATA.match(code)]
+    if invalides:
+        raise RouteFormError(
+            f"code d'aéroport attendu sur trois lettres, reçu : {', '.join(invalides)}"
+        )
+    return codes
 
 
 def _entier(valeur: str | None, defaut: int | None = None) -> int | None:
@@ -7386,12 +7429,23 @@ def _entier(valeur: str | None, defaut: int | None = None) -> int | None:
 
 
 def build_policy_params(date_policy: DatePolicyKind, form: dict) -> dict:
+    aller_retour = TripType(form.get("trip_type") or TripType.ROUND_TRIP) is TripType.ROUND_TRIP
+
     if date_policy is DatePolicyKind.FIXED:
         depart = (form.get("depart") or "").strip()
         if not depart:
             raise RouteFormError("une politique à dates fixes exige une date de départ")
-        params: dict = {"depart": depart}
         retour = (form.get("retour") or "").strip()
+        if aller_retour and not retour:
+            # `_dates_fixed` pose `retour = None` dès que la clé manque, sans regarder le
+            # `trip_type` : le planificateur produirait une requête d'aller simple et son prix
+            # deviendrait le plus bas du trajet. C'est la panne constatée sur Air Transat,
+            # atteignable ici d'un simple champ laissé vide.
+            raise RouteFormError(
+                "un aller-retour exige une date de retour ; sans elle le prix relevé serait "
+                "celui d'un aller simple"
+            )
+        params: dict = {"depart": depart}
         if retour:
             params["retour"] = retour
         flex = _entier(form.get("flex_days"), 0)
@@ -7401,6 +7455,8 @@ def build_policy_params(date_policy: DatePolicyKind, form: dict) -> dict:
 
     sejour_min = _entier(form.get("sejour_min"), 7) or 7
     sejour_max = _entier(form.get("sejour_max"), 14) or 14
+    if sejour_min < 1 or sejour_max < 1:
+        raise RouteFormError("un séjour se compte en nuits : au moins une")
     if sejour_min > sejour_max:
         raise RouteFormError("le séjour minimal dépasse le séjour maximal")
 
@@ -7596,8 +7652,9 @@ def test_creation_dun_trajet_en_politique_fenetre(client, session):
 {% if date_policy == 'fixed' %}
   <div class="ligne">
     <div><label for="depart">Départ</label>
-      <input type="date" id="depart" name="depart" value="{{ params.get('depart', '') }}"></div>
-    <div><label for="retour">Retour</label>
+      <input type="date" id="depart" name="depart" required
+             value="{{ params.get('depart', '') }}"></div>
+    <div><label for="retour">Retour <span class="discret">(obligatoire pour un aller-retour)</span></label>
       <input type="date" id="retour" name="retour" value="{{ params.get('retour', '') }}"></div>
     <div><label for="flex_days">Souplesse (jours)</label>
       <input type="number" id="flex_days" name="flex_days" min="0" max="14"
@@ -7890,7 +7947,7 @@ L'ordre de déclaration compte : `/routes/new` et `/routes/policy-fields` doiven
 ./dev lint
 ```
 
-Attendu : 39 tests passés (14 des tâches précédentes, 14 de formulaires, 11 de CRUD).
+Attendu : 49 tests passés dans `tests/web/` (20 de la tâche 18, 18 de formulaires, 11 de CRUD).
 
 - [ ] **Étape 7 : committer**
 
