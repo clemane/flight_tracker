@@ -1,17 +1,34 @@
-<tr>
-  <td>{{ route.label }}</td>
-  <td class="discret">{{ route.origins | join(', ') }} → {{ route.destinations | join(', ') }}</td>
-  <td class="discret">{{ route.date_policy }}
-    {% if route.target_price_cad %}<br>cible {{ route.target_price_cad }} ${% endif %}</td>
-  <td>{% if route.active %}actif{% else %}<span class="discret">désactivé</span>{% endif %}</td>
-  <td>
-    <a href="/routes/{{ route.id }}/edit">modifier</a>
-    <form method="post" action="/routes/{{ route.id }}/toggle" style="display:inline">
-      <button type="submit">{% if route.active %}désactiver{% else %}activer{% endif %}</button>
+{# Une carte de trajet. S'appuie sur la variable de boucle `route` du gabarit appelant. #}
+<article class="trajet{% if not route.active %} trajet-inactif{% endif %}" data-trajet="{{ route.id }}">
+  <div>
+    <div class="trajet-libelle">{{ route.label }}</div>
+    <div class="discret">
+      {{ route.origins | join(', ') }} → {{ route.destinations | join(', ') }}
+      <span class="point">·</span> {{ route.date_policy }}
+      {% if route.target_price_cad %}
+        <span class="point">·</span> cible {{ route.target_price_cad }} $
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    {% if route.active %}
+      <span class="badge badge-vert" data-actif>actif</span>
+    {% else %}
+      <span class="badge" data-inactif>désactivé</span>
+    {% endif %}
+  </div>
+
+  <div class="actions">
+    <a class="bouton bouton-discret bouton-petit" href="/routes/{{ route.id }}/edit">Modifier</a>
+    <form class="en-ligne" method="post" action="/routes/{{ route.id }}/toggle">
+      <button class="bouton bouton-discret bouton-petit" type="submit">
+        {% if route.active %}Mettre en pause{% else %}Réactiver{% endif %}
+      </button>
     </form>
-    <form method="post" action="/routes/{{ route.id }}/delete" style="display:inline"
+    <form class="en-ligne" method="post" action="/routes/{{ route.id }}/delete"
           onsubmit="return confirm('Supprimer ce trajet et son historique ?')">
-      <button type="submit">supprimer</button>
+      <button class="bouton bouton-discret bouton-danger bouton-petit" type="submit">Supprimer</button>
     </form>
-  </td>
-</tr>
+  </div>
+</article>

@@ -54,7 +54,7 @@ def test_le_tableau_de_bord_liste_les_trajets(client, session):
     assert "Lisbonne en octobre" in corps
     # Contrepartie du test de la page vide : un gabarit qui afficherait toujours l'invite de
     # création passerait les deux tests sans que personne ne s'en aperçoive.
-    assert "aucun trajet" not in corps.lower()
+    assert "data-aucun-trajet" not in corps
 
 
 def test_le_tableau_de_bord_montre_le_plus_bas_du_jour(client, session):
@@ -68,10 +68,10 @@ def test_le_tableau_de_bord_montre_le_plus_bas_du_jour(client, session):
 
     # Le montant seul se retrouverait par accident dans une coordonnée SVG ou une règle CSS.
     assert "480 $" in corps
-    assert "aucun relevé" not in corps
+    assert "data-sans-releve" not in corps
     # Savoir *quelle* source a produit le prix conditionne tout diagnostic : deux sources ne
     # relèvent pas le même périmètre de vol, et un prix sans provenance n'est pas vérifiable.
-    assert ">google_flights<" in corps
+    assert 'data-provider="google_flights"' in corps
 
 
 def test_un_prix_sous_la_cible_est_signale_comme_trouvaille(client, session):
@@ -81,7 +81,7 @@ def test_un_prix_sous_la_cible_est_signale_comme_trouvaille(client, session):
     )
     session.commit()
 
-    assert 'class="trouvaille"' in client.get("/").text
+    assert "data-trouvaille" in client.get("/").text
 
 
 def test_un_prix_ordinaire_nest_pas_signale_comme_trouvaille(client, session):
@@ -91,7 +91,7 @@ def test_un_prix_ordinaire_nest_pas_signale_comme_trouvaille(client, session):
     )
     session.commit()
 
-    assert 'class="trouvaille"' not in client.get("/").text
+    assert "data-trouvaille" not in client.get("/").text
 
 
 def test_un_prix_sous_le_plancher_de_credibilite_nest_pas_signale_comme_trouvaille(client, session):
@@ -103,7 +103,7 @@ def test_un_prix_sous_le_plancher_de_credibilite_nest_pas_signale_comme_trouvail
     )
     session.commit()
 
-    assert 'class="trouvaille"' not in client.get("/").text
+    assert "data-trouvaille" not in client.get("/").text
 
 
 def _historique(session, trajet, jours: dict[int, int]) -> None:
@@ -133,7 +133,7 @@ def test_un_prix_nettement_sous_la_mediane_est_signale_comme_trouvaille(client, 
     session.commit()
 
     # 25 % sous la médiane : au-dessus du seuil de trouvaille, en dessous de celui d'exception.
-    assert 'class="trouvaille"' in client.get("/").text
+    assert "data-trouvaille" in client.get("/").text
 
 
 def test_un_prix_bas_sans_historique_suffisant_nest_pas_signale_comme_trouvaille(client, session):
@@ -147,7 +147,7 @@ def test_un_prix_bas_sans_historique_suffisant_nest_pas_signale_comme_trouvaille
     )
     session.commit()
 
-    assert 'class="trouvaille"' not in client.get("/").text
+    assert "data-trouvaille" not in client.get("/").text
 
 
 def test_un_historique_trop_court_est_annonce_comme_en_constitution(client, session):
@@ -160,7 +160,7 @@ def test_un_historique_trop_court_est_annonce_comme_en_constitution(client, sess
     )
     session.commit()
 
-    assert "historique en constitution" in client.get("/").text
+    assert "data-historique-en-cours" in client.get("/").text
 
 
 def test_le_tableau_de_bord_affiche_lecart_a_la_mediane_et_la_mediane(client, session):
@@ -175,7 +175,7 @@ def test_le_tableau_de_bord_affiche_lecart_a_la_mediane_et_la_mediane(client, se
 
     assert "10 %" in corps
     assert "médiane 1000 $" in corps
-    assert "historique en constitution" not in corps
+    assert "data-historique-en-cours" not in corps
 
 
 def test_la_mediane_de_reference_couvre_90_jours(client, session):
@@ -259,7 +259,7 @@ def test_un_trajet_sans_donnee_ne_casse_pas_la_page(client, session):
 def test_le_tableau_de_bord_vide_est_explicite(client):
     corps = client.get("/").text
 
-    assert "aucun trajet" in corps.lower()
+    assert "data-aucun-trajet" in corps
 
 
 def test_la_page_sante_liste_les_sources(client, session):
@@ -277,7 +277,7 @@ def test_la_page_sante_liste_les_sources(client, session):
     # Le compte d'offres du dernier passage est le seul chiffre qui distingue une source en panne
     # franche d'une source qui répond « 200 OK » sans rien rapporter — la panne silencieuse que
     # le design nomme comme son risque principal.
-    assert ">42<" in corps
+    assert 'data-offres="42"' in corps
 
 
 def test_la_page_sante_montre_les_echecs_et_la_derniere_erreur(client, session):
@@ -292,7 +292,7 @@ def test_la_page_sante_montre_les_echecs_et_la_derniere_erreur(client, session):
 
     # `assert "3" in corps` passerait toujours : le « 3 » de htmx.org@2.0.3 est dans le gabarit
     # de base. Il faut viser le contenu de la cellule.
-    assert ">3<" in corps
+    assert 'data-echecs="3"' in corps
     assert "sélecteur introuvable" in corps
 
 
@@ -320,7 +320,7 @@ def test_une_source_muette_depuis_plus_de_48h_est_signalee(client, session):
 
     corps = client.get("/health").text
 
-    assert corps.count('class="muet"') == 1
+    assert corps.count("data-muet") == 1
 
 
 def test_une_source_muette_depuis_exactement_48h_nest_pas_encore_signalee(client, session):
@@ -333,7 +333,7 @@ def test_une_source_muette_depuis_exactement_48h_nest_pas_encore_signalee(client
     session.add(ProviderHealth(provider="transat", last_success_at=MAINTENANT))
     session.commit()
 
-    assert 'class="muet"' not in client.get("/health").text
+    assert "data-muet" not in client.get("/health").text
 
 
 def test_create_app_cable_une_session_reelle_sans_surcharge(engine):
@@ -357,4 +357,4 @@ def test_une_source_qui_a_repondu_recemment_nest_pas_signalee(client, session):
     )
     session.commit()
 
-    assert 'class="muet"' not in client.get("/health").text
+    assert "data-muet" not in client.get("/health").text

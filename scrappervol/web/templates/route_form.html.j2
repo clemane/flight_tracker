@@ -1,63 +1,99 @@
 {% extends "base.html.j2" %}
-{% block titre_page %}{% if route %}Modifier un trajet{% else %}Nouveau trajet{% endif %}{% endblock %}
+{% block titre %}{% if route %}Modifier un trajet{% else %}Nouveau trajet{% endif %} — ScrapperVol{% endblock %}
 {% block contenu %}
-{% if erreur %}<p class="muet">{{ erreur }}</p>{% endif %}
-<form method="post" action="{% if route %}/routes/{{ route.id }}{% else %}/routes{% endif %}">
-  <label for="label">Libellé</label>
-  <input type="text" id="label" name="label" required
-         value="{{ route.label if route else '' }}" placeholder="Paris au printemps">
+
+<h1>{% if route %}Modifier un trajet{% else %}Nouveau trajet{% endif %}</h1>
+<p class="sous-titre">Un trajet surveillé est relevé automatiquement et entre dans le digest
+quotidien.</p>
+
+{% if erreur %}<p class="erreur" data-erreur>{{ erreur }}</p>{% endif %}
+
+<form class="formulaire carte carte-corps" method="post"
+      action="{% if route %}/routes/{{ route.id }}{% else %}/routes{% endif %}">
 
   <div class="ligne">
-    <div><label for="origins">Origines</label>
-      <input type="text" id="origins" name="origins" required placeholder="YUL, YQB"
-             value="{{ route.origins | join(', ') if route else 'YUL, YQB' }}"></div>
-    <div><label for="destinations">Destinations</label>
-      <input type="text" id="destinations" name="destinations" required placeholder="CDG, ORY"
-             value="{{ route.destinations | join(', ') if route else '' }}"></div>
+    <div>
+      <label for="label">Libellé</label>
+      <input type="text" id="label" name="label" required
+             value="{{ route.label if route else '' }}" placeholder="Paris au printemps">
+    </div>
   </div>
 
-  <label for="date_policy">Politique de dates</label>
-  <select id="date_policy" name="date_policy"
-          hx-get="/routes/policy-fields" hx-target="#champs-politique" hx-trigger="change"
-          hx-include="this">
-    {% for valeur, libelle in [('fixed', 'Dates fixes'), ('window', 'Fenêtre de mois'),
-                               ('flexible', 'Totalement souple')] %}
-      <option value="{{ valeur }}"
-        {% if route and route.date_policy == valeur %}selected{% endif %}>{{ libelle }}</option>
-    {% endfor %}
-  </select>
+  <div class="ligne">
+    <div>
+      <label for="origins">Origines</label>
+      <input class="aeroport" type="text" id="origins" name="origins" required placeholder="YUL, YQB"
+             value="{{ route.origins | join(', ') if route else 'YUL, YQB' }}">
+    </div>
+    <div>
+      <label for="destinations">Destinations</label>
+      <input class="aeroport" type="text" id="destinations" name="destinations" required
+             placeholder="CDG, ORY"
+             value="{{ route.destinations | join(', ') if route else '' }}">
+    </div>
+  </div>
+
+  <div class="ligne">
+    <div>
+      <label for="date_policy">Politique de dates</label>
+      <select id="date_policy" name="date_policy"
+              hx-get="/routes/policy-fields" hx-target="#champs-politique" hx-trigger="change"
+              hx-include="closest form">
+        {% for valeur, libelle in [('fixed', 'Dates fixes'), ('window', 'Fenêtre de mois'),
+                                   ('flexible', 'Totalement souple')] %}
+          <option value="{{ valeur }}"
+            {% if date_policy == valeur %}selected{% endif %}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
 
   <div id="champs-politique">
     {% include "policy_fields.html.j2" %}
   </div>
 
   <div class="ligne">
-    <div><label for="trip_type">Type</label>
+    <div>
+      <label for="trip_type">Type</label>
       <select id="trip_type" name="trip_type">
         <option value="round_trip"
           {% if route and route.trip_type == 'round_trip' %}selected{% endif %}>Aller-retour</option>
         <option value="one_way"
           {% if route and route.trip_type == 'one_way' %}selected{% endif %}>Aller simple</option>
-      </select></div>
-    <div><label for="passengers">Passagers</label>
+      </select>
+    </div>
+    <div>
+      <label for="passengers">Passagers</label>
       <input type="number" id="passengers" name="passengers" min="1"
-             value="{{ route.passengers if route else 1 }}"></div>
-    <div><label for="max_stops">Escales maximales</label>
+             value="{{ route.passengers if route else 1 }}">
+    </div>
+    <div>
+      <label for="max_stops">Escales maximales</label>
       <input type="number" id="max_stops" name="max_stops" min="0" placeholder="sans limite"
-             value="{{ route.max_stops if route and route.max_stops is not none else '' }}"></div>
+             value="{{ route.max_stops if route and route.max_stops is not none else '' }}">
+    </div>
   </div>
 
   <div class="ligne">
-    <div><label for="target_price_cad">Prix cible (CAD)</label>
+    <div>
+      <label for="target_price_cad">Prix cible (CAD)</label>
       <input type="number" id="target_price_cad" name="target_price_cad" min="1" placeholder="aucun"
-             value="{{ route.target_price_cad if route and route.target_price_cad else '' }}"></div>
-    <div><label for="exception_threshold">Seuil d'aberration</label>
+             value="{{ route.target_price_cad if route and route.target_price_cad else '' }}">
+    </div>
+    <div>
+      <label for="exception_threshold">Seuil d'aberration</label>
       <input type="number" id="exception_threshold" name="exception_threshold"
              step="0.05" min="0.05" max="0.95"
-             value="{{ route.exception_threshold if route else 0.40 }}"></div>
+             value="{{ route.exception_threshold if route else 0.40 }}">
+    </div>
   </div>
 
-  <p><button type="submit">{% if route %}Enregistrer{% else %}Créer le trajet{% endif %}</button>
-     <a href="/routes">Annuler</a></p>
+  <div class="actions">
+    <button class="bouton" type="submit">
+      {% if route %}Enregistrer{% else %}Créer le trajet{% endif %}
+    </button>
+    <a class="bouton bouton-discret" href="/routes">Annuler</a>
+  </div>
 </form>
+
 {% endblock %}

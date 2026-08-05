@@ -1,0 +1,100 @@
+{# Fragment de résultats, rafraîchi par htmx.
+
+   Il se recharge lui-même toutes les 2 s tant qu'une source travaille. Quand tout est terminé,
+   l'attribut `hx-trigger` n'est plus émis : le rafraîchissement s'arrête de lui-même, sans une
+   ligne de JavaScript et sans que le serveur ait à le dire. #}
+<div id="resultats"
+     {% if run and not run.terminee %}
+     hx-get="/search/{{ run.id }}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  {% if erreur %}
+    <p class="erreur" data-erreur>{{ erreur }}</p>
+  {% elif run %}
+
+    <div class="sources">
+      {% for etat in run.sources() %}
+        <span class="source" data-source="{{ etat.nom }}" data-statut="{{ etat.statut }}">
+          <span class="pastille"></span>
+          <span class="source-nom">{{ etat.nom }}</span>
+          {% if etat.statut == 'termine' %}
+            {{ etat.offres | length }} offre{{ 's' if etat.offres | length > 1 else '' }}
+            <span class="faible">· {{ '%.0f' | format(etat.duree_s) }} s</span>
+          {% elif etat.statut == 'erreur' %}
+            <span title="{{ etat.erreur }}">indisponible</span>
+          {% else %}
+            en cours…
+          {% endif %}
+        </span>
+      {% endfor %}
+    </div>
+
+    {% if lignes %}
+      <div class="grille" data-offres="{{ lignes | length }}">
+        {% for ligne in lignes %}
+          <article class="offre"{% if ligne.meilleur %} data-meilleur{% endif %}>
+            <div class="offre-prix" data-prix="{{ ligne.offre.price_cad }}">
+              {{ ligne.offre.price_cad }} $
+            </div>
+            <div class="offre-details">
+              <div class="offre-ligne">
+                <span class="offre-compagnie">{{ ligne.offre.airline }}</span>
+                <span class="point">·</span>
+                <span class="discret">
+                  {% if ligne.offre.stops == 0 %}direct{% else %}{{ ligne.offre.stops }} escale{{ 's' if ligne.offre.stops > 1 else '' }}{% endif %}
+                </span>
+                {% if ligne.meilleur %}
+                  <span class="badge badge-vert">meilleur prix</span>
+                {% endif %}
+                {% if ligne.gap_vs_median and ligne.gap_vs_median > 0.05 %}
+                  <span class="badge badge-vert" data-ecart>
+                    {{ (ligne.gap_vs_median * 100) | round | int }} % sous la médiane
+                  </span>
+                {% endif %}
+              </div>
+              <div class="offre-meta">
+                {{ ligne.offre.depart_date }}
+                {% if ligne.offre.return_date %}→ {{ ligne.offre.return_date }}{% endif %}
+                <span class="point">·</span> {{ ligne.offre.origin }} → {{ ligne.offre.destination }}
+                <span class="point">·</span> <span data-source-offre="{{ ligne.offre.provider }}">{{ ligne.offre.provider }}</span>
+              </div>
+            </div>
+            <div class="offre-actions">
+              {% if ligne.offre.deep_link %}
+                <a class="bouton bouton-second bouton-petit" href="{{ ligne.offre.deep_link }}"
+                   target="_blank" rel="noopener noreferrer">Ouvrir ↗</a>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      <div class="section-entete" style="margin-top:20px">
+        <form method="post" action="/search/{{ run.id }}/watch">
+          <button class="bouton bouton-second" type="submit">＋ Surveiller ce trajet</button>
+        </form>
+        <span class="discret">Le trajet sera relevé automatiquement et entrera dans le digest.</span>
+      </div>
+
+    {% elif run.terminee %}
+      <div class="vide" data-aucune-offre>
+        <p>Aucun vol trouvé pour cette liaison à ces dates.</p>
+        {% if run.erreurs %}
+          <p class="discret">
+            {{ run.erreurs | length }} source{{ 's' if run.erreurs | length > 1 else '' }} n'a pas répondu :
+            le résultat est peut-être incomplet.
+          </p>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="vide">
+        <p><span class="tourniquet"></span></p>
+        <p class="discret">Interrogation des sources… Air Transat pilote un vrai navigateur et
+        demande une trentaine de secondes.</p>
+      </div>
+    {% endif %}
+
+  {% endif %}
+</div>

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 
-from scrappervol.core.types import DatePolicyKind, TripType
+from scrappervol.core.query_planner import plan_queries
+from scrappervol.core.types import DatePolicyKind, RoutePolicy, SearchQuery, TripType
 
 _SEPARATEURS = re.compile(r"[,\s;]+")
 _CODE_IATA = re.compile(r"^[A-Z]{3}$")
@@ -110,3 +112,50 @@ def validate_route_form(form: dict) -> dict:
         "target_price_cad": _entier(form.get("target_price_cad"), None),
         "exception_threshold": seuil,
     }
+
+
+def _un_seul_aeroport(texte: str, champ: str) -> str:
+    codes = parse_airports(texte)
+    if not codes:
+        raise RouteFormError(f"{champ} est obligatoire")
+    if len(codes) > 1:
+        raise RouteFormError(f"un seul aéroport pour {champ}, reçu : {', '.join(codes)}")
+    return codes[0]
+
+
+def validate_search_form(form: dict, today: date) -> SearchQuery:
+    """Traduit le formulaire de recherche en une requête concrète.
+
+    La construction passe par `plan_queries` plutôt que par un `SearchQuery(...)` direct : c'est
+    le même chemin que celui d'un trajet surveillé, donc les mêmes règles de dates s'appliquent,
+    et une recherche ne peut pas produire une requête qu'un relevé automatique refuserait.
+    """
+    origine = _un_seul_aeroport(form.get("origin", ""), "l'origine")
+    destination = _un_seul_aeroport(form.get("destination", ""), "la destination")
+    if origine == destination:
+        raise RouteFormError("l'origine et la destination sont identiques")
+
+    type_voyage = TripType(form.get("trip_type") or TripType.ROUND_TRIP)
+    params = build_policy_params(DatePolicyKind.FIXED, {**form, "trip_type": type_voyage})
+
+    requetes = plan_queries(
+        RoutePolicy(
+            origins=[origine],
+            destinations=[destination],
+            date_policy=DatePolicyKind.FIXED,
+            policy_params=params,
+            trip_type=type_voyage,
+            passengers=_entier(form.get("passengers"), 1) or 1,
+            max_stops=_entier(form.get("max_stops"), None),
+        ),
+        today=today,
+    )
+    if not requetes:
+        # `plan_queries` écarte les créneaux qui ne sont pas dans le futur : sans ce message,
+        # une date passée rendrait une recherche vide, impossible à distinguer d'un vol complet.
+        raise RouteFormError("la date de départ doit être postérieure à aujourd'hui")
+
+    requete = requetes[0]
+    if requete.return_date is not None and requete.return_date < requete.depart_date:
+        raise RouteFormError("le retour précède le départ")
+    return requete

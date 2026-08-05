@@ -13,8 +13,25 @@ cp .env.example .env      # renseigner les paramètres SMTP et ALERT_TO
 ./dev up
 ```
 
-Le tableau de bord est alors sur <http://127.0.0.1:8080>. Il n'est accessible que depuis cette
+L'interface est alors sur <http://127.0.0.1:8080>. Elle n'est accessible que depuis cette
 machine : l'application n'a pas d'authentification, et n'a pas vocation à être exposée.
+
+## Les deux usages
+
+L'application répond à deux besoins distincts, qu'il vaut mieux ne pas confondre.
+
+**Chercher un prix maintenant.** La page d'accueil interroge les sources à l'instant où l'on
+valide. Google Flights répond en deux secondes, Air Transat en une trentaine — un vrai navigateur
+est piloté jusqu'à la page récapitulative. Les résultats s'affichent au fur et à mesure, source
+par source, et l'écran cesse de se rafraîchir de lui-même quand tout est rentré.
+
+Une recherche **n'écrit rien** : ni relevé, ni historique, ni état de santé des sources. Elle ne
+peut donc ni fausser une médiane avec des dates de passage, ni masquer une panne du relevé
+automatique, ni en déclencher une. Le bouton « Surveiller ce trajet » est le pont entre les deux
+usages : il crée un trajet suivi à partir de la recherche affichée.
+
+**Suivre un trajet dans la durée.** Un trajet déclaré est relevé toutes les 4 à 6 h, entre dans le
+digest de 18 h et devient éligible aux alertes une fois 14 jours d'historique accumulés.
 
 ## Vérifier que l'installation fonctionne
 
@@ -22,13 +39,17 @@ Le premier passage de collecte n'a lieu qu'au bout de plusieurs heures et le dig
 18 h : au démarrage, le tableau de bord reste donc vide un long moment, sans que rien distingue
 une installation qui marche d'une installation en panne. `./dev once` force ces passages.
 
+Le plus rapide est de lancer une recherche depuis la page d'accueil : elle éprouve les deux
+sources en une quarantaine de secondes, sans rien attendre ni rien enregistrer. Si les prix
+s'affichent, la collecte fonctionne. Pour éprouver la chaîne complète, jusqu'au digest :
+
 1. Déclarer un trajet sur <http://127.0.0.1:8080/routes>. Un aller-retour à dates fixes, à deux ou
    trois mois d'ici, donne le résultat le plus lisible.
 2. `./dev once scan` — compter une quarantaine de secondes, Air Transat étant pilotée dans un
    navigateur. La commande affiche, pour chaque source, le nombre d'offres relevées. Une source à
    zéro offre, ou en échec, est le signal à suivre : les journaux et `data/debug/` en disent la
    raison.
-3. Recharger le tableau de bord : le trajet doit porter un prix. La page Santé doit montrer les
+3. Recharger la page d'accueil : le trajet doit porter un prix. La page Santé doit montrer les
    deux sources avec un dernier succès à l'instant.
 4. `./dev once preview` affiche le digest tel qu'il partirait le soir même.
 

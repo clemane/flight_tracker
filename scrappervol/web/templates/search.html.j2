@@ -1,0 +1,115 @@
+{% extends "base.html.j2" %}
+{% block titre %}Recherche — ScrapperVol{% endblock %}
+{% block contenu %}
+
+<h1>Rechercher un vol</h1>
+<p class="sous-titre">Les sources sont interrogées à l'instant, rien n'est enregistré.</p>
+
+<form class="recherche" method="post" action="/search"
+      hx-post="/search" hx-target="#resultats" hx-swap="outerHTML">
+  <div class="recherche-grille">
+    <div class="champ">
+      <label for="origin">Départ</label>
+      <input class="aeroport" id="origin" name="origin" placeholder="YUL"
+             maxlength="3" required autocomplete="off">
+    </div>
+    <div class="champ">
+      <label for="destination">Arrivée</label>
+      <input class="aeroport" id="destination" name="destination" placeholder="CUN"
+             maxlength="3" required autocomplete="off">
+    </div>
+    <div class="champ">
+      <label for="depart">Aller</label>
+      <input type="date" id="depart" name="depart" min="{{ aujourdhui }}" required>
+    </div>
+    <div class="champ">
+      <label for="retour">Retour</label>
+      <input type="date" id="retour" name="retour" min="{{ aujourdhui }}" required>
+    </div>
+    <div class="champ">
+      <label for="passengers">Voyageurs</label>
+      <input type="number" id="passengers" name="passengers" value="1" min="1" max="9">
+    </div>
+    <div class="champ champ-action">
+      <button class="bouton" type="submit">
+        <span class="chargement"><span class="tourniquet"></span></span>
+        Rechercher
+      </button>
+    </div>
+  </div>
+</form>
+
+<div id="resultats"></div>
+
+<section class="section">
+  <div class="section-entete">
+    <h2>Trajets surveillés</h2>
+    <span class="compte">{{ lignes | length }}</span>
+    <span class="a-droite"><a class="bouton bouton-second bouton-petit" href="/routes/new">＋ Nouveau trajet</a></span>
+  </div>
+
+  {% if not lignes %}
+    <div class="vide" data-aucun-trajet>
+      <p>Rien n'est surveillé pour l'instant.</p>
+      <p class="discret">Lancez une recherche ci-dessus, puis « Surveiller ce trajet » pour en
+      suivre le prix jour après jour.</p>
+    </div>
+  {% else %}
+    <div class="grille">
+      {% for ligne in lignes %}
+        <article class="trajet{% if not ligne.route.active %} trajet-inactif{% endif %}"
+                 data-trajet="{{ ligne.route.id }}"
+                 {% if ligne.is_find %}data-trouvaille{% endif %}>
+          <div>
+            <div class="trajet-libelle">{{ ligne.route.label }}</div>
+            <div class="discret">
+              {{ ligne.route.origins | join(', ') }} → {{ ligne.route.destinations | join(', ') }}
+              {% if not ligne.route.active %}
+                <span class="badge">en pause</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div>
+            {% if ligne.price_cad %}
+              <div class="trajet-prix" data-prix="{{ ligne.price_cad }}">{{ ligne.price_cad }} $</div>
+              <div class="discret" data-provider="{{ ligne.provider }}">{{ ligne.provider }}</div>
+            {% else %}
+              <div class="discret" data-sans-releve>aucun relevé aujourd'hui</div>
+            {% endif %}
+          </div>
+
+          <div>
+            {% if ligne.history_building %}
+              <span class="badge badge-ambre" data-historique-en-cours>historique en constitution</span>
+            {% elif ligne.gap_vs_median is not none %}
+              <div>
+                {% if ligne.gap_vs_median > 0 %}
+                  <span class="badge badge-vert" data-ecart>
+                    {{ (ligne.gap_vs_median * 100) | round | int }} % sous la médiane
+                  </span>
+                {% else %}
+                  <span class="badge" data-ecart>
+                    {{ (ligne.gap_vs_median * -100) | round | int }} % au-dessus
+                  </span>
+                {% endif %}
+              </div>
+              <div class="discret" data-mediane="{{ ligne.median_price | round | int }}">
+                médiane {{ ligne.median_price | round | int }} $
+              </div>
+            {% endif %}
+            {% if ligne.points %}
+              <svg class="sparkline" width="140" height="34" viewBox="0 0 240 48"
+                   preserveAspectRatio="none" role="img" aria-label="historique des prix">
+                <polyline fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linejoin="round" points="{{ ligne.points }}"></polyline>
+              </svg>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}
