@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>{{ subject }}</title></head>
+<body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #222; max-width: 680px;">
+{% if data.has_stale_provider %}
+<p style="background:#fdecea;border-left:4px solid #c0392b;padding:12px;">
+  Attention : une source est <strong>muette</strong> depuis plus de 48 h —
+  {% for p in data.providers if p.is_stale %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}.
+  Les prix ci-dessous sont donc incomplets.
+</p>
+{% endif %}
+
+<h1 style="font-size:20px;">{{ data.find_count }} trouvaille{{ 's' if data.find_count > 1 else '' }}
+  le {{ data.day }}</h1>
+
+{% if not data.blocks %}
+<p>Aucun trajet actif.</p>
+{% endif %}
+
+{% for bloc in data.sorted_blocks %}
+<div style="border-top:1px solid #eee;padding:12px 0;">
+  <h2 style="font-size:16px;margin:0 0 4px;">
+    {{ bloc.label }}
+    {% if bloc.is_find and not bloc.history_building %}
+      <span style="color:#27ae60;">— trouvaille</span>
+    {% endif %}
+  </h2>
+  {% if bloc.price_cad is none %}
+    <p style="margin:0;color:#888;">Aucun prix relevé aujourd'hui.</p>
+  {% else %}
+    <p style="margin:0;font-size:18px;"><strong>{{ bloc.price_cad }} $</strong>
+      — {{ bloc.airline }} · {{ bloc.origin }} → {{ bloc.destination }}</p>
+    <p style="margin:4px 0;color:#555;">
+      {{ bloc.depart_date }}{% if bloc.return_date %} → {{ bloc.return_date }}{% endif %}
+      · relevé sur {{ bloc.provider }}
+    </p>
+    {% if bloc.history_building %}
+      <p style="margin:4px 0;color:#888;">historique en constitution</p>
+    {% else %}
+      <p style="margin:4px 0;color:#555;">
+        {# sur une seule ligne : un saut de ligne entre le pourcentage et « sous / au-dessus de »
+           casserait toute assertion portant sur la formule complète. #}
+        {{ (bloc.gap_vs_median | abs * 100) | round | int }} % {{ 'sous' if bloc.gap_vs_median >= 0 else 'au-dessus de' }} la médiane de 90 jours
+        ({{ bloc.median_price | round | int }} $)
+        {% if bloc.gap_vs_yesterday is not none %}
+          · {{ bloc.gap_vs_yesterday }} $ par rapport à hier
+        {% endif %}
+      </p>
+    {% endif %}
+    <p style="margin:8px 0;"><a href="{{ bloc.deep_link }}">Voir l'offre</a></p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<hr style="border:none;border-top:1px solid #eee;margin-top:24px;">
+<h3 style="font-size:13px;color:#666;">État des sources</h3>
+<ul style="font-size:13px;color:#666;">
+{% for p in data.providers %}
+  <li>{{ p.name }} —
+    {% if p.last_success_at %}dernier succès il y a {{ p.hours_silent | round(1) }} h{% else %}jamais{% endif %}
+    {% if p.consecutive_failures %} · {{ p.consecutive_failures }} échec(s) consécutif(s){% endif %}
+  </li>
+{% endfor %}
+</ul>
+</body>
+</html>

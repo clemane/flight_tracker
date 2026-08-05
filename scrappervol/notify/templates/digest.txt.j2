@@ -1,0 +1,24 @@
+{% if data.has_stale_provider %}ATTENTION : source muette depuis plus de 48 h — {% for p in data.providers if p.is_stale %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}. Les prix ci-dessous sont incomplets.
+
+{% endif %}{{ data.find_count }} trouvaille{{ 's' if data.find_count > 1 else '' }} le {{ data.day }}
+{% if not data.blocks %}
+Aucun trajet actif.
+{% endif %}
+{% for bloc in data.sorted_blocks %}
+{{ bloc.label }}{% if bloc.is_find and not bloc.history_building %} — TROUVAILLE{% endif %}
+
+{% if bloc.price_cad is none %}  aucun prix relevé aujourd'hui
+{% else %}  {{ bloc.price_cad }} $ — {{ bloc.airline }} · {{ bloc.origin }} vers {{ bloc.destination }}
+  {{ bloc.depart_date }}{% if bloc.return_date %} au {{ bloc.return_date }}{% endif %} · source {{ bloc.provider }}
+{% if bloc.history_building %}  historique en constitution
+{% else %}  {{ (bloc.gap_vs_median | abs * 100) | round | int }} % {{ 'sous' if bloc.gap_vs_median >= 0 else 'au-dessus de' }} la médiane de 90 jours ({{ bloc.median_price | round | int }} $){% if bloc.gap_vs_yesterday is not none %} · {{ bloc.gap_vs_yesterday }} $ vs hier{% endif %}
+
+{% endif %}  {{ bloc.deep_link }}
+{% endif %}
+{% endfor %}
+
+--
+État des sources
+{% for p in data.providers %}- {{ p.name }} : {% if p.last_success_at %}dernier succès il y a {{ p.hours_silent | round(1) }} h{% else %}jamais{% endif %}{% if p.consecutive_failures %} · {{ p.consecutive_failures }} échec(s){% endif %}
+
+{% endfor %}
