@@ -163,6 +163,36 @@ def test_le_mailer_construit_est_bien_transmis_a_lordonnanceur(tmp_path, monkeyp
     assert recu["mailer"] is sentinelle
 
 
+def test_lordonnanceur_et_linterface_partagent_la_meme_base(tmp_path, monkeypatch):
+    """Deux moteurs distincts de part et d'autre seraient une panne parfaitement silencieuse.
+
+    L'ordonnanceur écrirait les prix relevés dans une base, l'interface en afficherait une autre,
+    vide à jamais, et le tableau de santé resterait au vert : aucune erreur n'est levée nulle part.
+    Aucun test de requête HTTP ne peut le voir, puisqu'aucun job ne s'exécute pendant un test.
+    Seule la comparaison directe du moteur transmis à `build_scheduler` avec celui que sert
+    l'application le détecte.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SMTP_HOST", "")
+    monkeypatch.setenv("ENABLED_PROVIDERS", "")
+
+    import scrappervol.main as module_principal
+    from scrappervol.scheduler.app import build_scheduler as vrai_build_scheduler
+
+    recu = {}
+
+    def faux_build_scheduler(engine, settings, mailer):
+        recu["engine"] = engine
+        return vrai_build_scheduler(engine, settings, mailer)
+
+    monkeypatch.setattr(module_principal, "build_scheduler", faux_build_scheduler)
+
+    application = module_principal.build_application()
+
+    assert recu["engine"] is application.state.engine
+
+
 def test_main_configure_le_journal_et_lance_uvicorn(tmp_path, monkeypatch):
     """`main()` n'est appelée par aucun autre test : sans celui-ci, son câblage (hôte, port,
     niveau de journalisation) échappe entièrement à la suite. `uvicorn.run` et
