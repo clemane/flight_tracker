@@ -137,3 +137,46 @@ def test_un_echec_denvoi_ne_journalise_jamais_le_mot_de_passe(caplog):
         SmtpMailer(reglages).send(COURRIEL, "vers@example.com")
 
     assert "secret-a-proteger" not in caplog.text
+
+
+def test_un_envoi_reussi_laisse_une_trace_sans_exposer_le_mot_de_passe(caplog):
+    """Deux gardes sur le même journal, celui du chemin nominal.
+
+    Le test d'échec ci-dessus ne protège en réalité rien : ce chemin ne journalise rien du tout,
+    donc son `not in caplog.text` passerait même si le secret fuyait partout ailleurs. C'est ici,
+    sur le chemin parcouru à chaque alerte envoyée, qu'une fuite du `repr` des réglages serait
+    systématique.
+
+    La trace de succès est par ailleurs la seule preuve qu'un courriel est bien parti : sans
+    elle, un envoi réussi et un envoi jamais tenté laissent exactement le même journal.
+    """
+    reglages = Settings(
+        smtp_host="smtp.example.com", smtp_user="utilisateur", smtp_password="secret-a-proteger"
+    )
+
+    with (
+        caplog.at_level("DEBUG", logger="scrappervol.notify.mailer"),
+        patch("scrappervol.notify.mailer.smtplib.SMTP") as smtp,
+    ):
+        smtp.return_value.__enter__.return_value = MagicMock()
+        SmtpMailer(reglages).send(COURRIEL, "vers@example.com")
+
+    assert "Sujet" in caplog.text
+    assert "vers@example.com" in caplog.text
+    assert "secret-a-proteger" not in caplog.text
+
+
+def test_le_message_transmis_porte_lexpediteur_configure():
+    """`send_message.assert_called_once()` ne dit rien du message transmis : un expéditeur
+    erroné — le destinataire recopié, par exemple — partirait sans qu'aucun test ne bronche.
+    `build_message` est bien testé, mais isolément, avec un `sender` fourni par le test."""
+    reglages = Settings(smtp_host="smtp.example.com", smtp_from="veille@example.com")
+    session = MagicMock()
+
+    with patch("scrappervol.notify.mailer.smtplib.SMTP") as smtp:
+        smtp.return_value.__enter__.return_value = session
+        SmtpMailer(reglages).send(COURRIEL, "vers@example.com")
+
+    (message,) = session.send_message.call_args.args
+    assert message["From"] == "veille@example.com"
+    assert message["To"] == "vers@example.com"
