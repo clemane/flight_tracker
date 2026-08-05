@@ -33,6 +33,16 @@
     </div>
 
     {% if lignes %}
+      {# Sans cette mention, un total aller-retour se compare par erreur au prix par segment
+         qu'affiche la page du transporteur — Air Transat annonce 790 $ l'aller là où le panier
+         complet en vaut 1716. Le chiffre est le même, l'unité ne l'est pas. #}
+      <p class="discret note-prix" data-note-prix>
+        Prix totaux <strong>aller-retour</strong> pour
+        {{ run.query.passengers }} voyageur{{ 's' if run.query.passengers > 1 else '' }},
+        taxes et frais inclus. Les sites des transporteurs affichent souvent un prix
+        <em>par segment</em>, soit environ la moitié.
+      </p>
+
       <div class="grille" data-offres="{{ lignes | length }}">
         {% for ligne in lignes %}
           <article class="offre"{% if ligne.meilleur %} data-meilleur{% endif %}>

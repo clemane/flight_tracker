@@ -335,3 +335,34 @@ def test_la_mediane_dun_trajet_vers_une_autre_destination_nest_pas_utilisee(
     run_id = _recherche_terminee(client, app)
 
     assert "data-ecart" not in client.get(f"/search/{run_id}").text
+
+
+def test_les_prix_sont_annonces_comme_des_totaux_aller_retour(client, app):
+    """Sans cette mention, un total aller-retour se compare au prix par segment qu'affiche le
+    transporteur : Air Transat annonce 790 $ l'aller là où le panier complet en vaut 1716, et
+    l'écart passe pour une erreur de relevé alors que les deux chiffres sont justes."""
+    _sources(app, SourceImmediate("bon", 400))
+    reponse = client.post("/search", data=FORMULAIRE)
+    run_id = re.search(r"/search/(\w+)", reponse.text).group(1)
+
+    assert _attendre(lambda: "every 2s" not in client.get(f"/search/{run_id}").text)
+    corps = client.get(f"/search/{run_id}").text
+
+    assert "data-note-prix" in corps
+    note = re.search(r"data-note-prix[^>]*>(.*?)</p>", corps, re.S).group(1)
+    assert "aller-retour" in note
+    assert "taxes" in note.lower()
+    assert "segment" in note.lower()
+
+
+def test_la_note_de_prix_saccorde_au_nombre_de_voyageurs(client, app):
+    """Un total pour quatre ne se lit pas comme un total pour un : le nombre demandé est repris."""
+    _sources(app, SourceImmediate("bon", 400))
+    reponse = client.post("/search", data={**FORMULAIRE, "passengers": "4"})
+    run_id = re.search(r"/search/(\w+)", reponse.text).group(1)
+
+    assert _attendre(lambda: "every 2s" not in client.get(f"/search/{run_id}").text)
+    note = re.search(
+        r"data-note-prix[^>]*>(.*?)</p>", client.get(f"/search/{run_id}").text, re.S
+    ).group(1)
+    assert "4 voyageurs" in " ".join(note.split())
