@@ -12,8 +12,11 @@ from sqlalchemy import Engine
 from scrappervol.config import Settings
 from scrappervol.notify.mailer import Mailer
 from scrappervol.providers.base import PriceProvider
+from scrappervol.providers.factory import build_providers
 from scrappervol.scheduler.jobs import purge_old_data, run_scan, send_digest
 from scrappervol.storage.db import session_scope
+
+__all__ = ["INTERVALLES", "JITTER_S", "build_providers", "build_scheduler"]
 
 logger = logging.getLogger(__name__)
 
@@ -28,28 +31,6 @@ INTERVALLES = {
 
 # Décalage aléatoire appliqué à chaque passage, en secondes.
 JITTER_S = 1800
-
-
-def build_providers(settings: Settings) -> list[PriceProvider]:
-    """Instancie les sources activées. Une source inconnue ou non importable est ignorée."""
-    sources: list[PriceProvider] = []
-    for nom in settings.enabled_providers:
-        try:
-            if nom == "google_flights":
-                from scrappervol.providers.google_flights import GoogleFlightsProvider
-
-                # Cette source ne prend pas de réglages : elle n'a pas d'__init__ et tout ce
-                # dont elle a besoin lui arrive par la SearchQuery.
-                sources.append(GoogleFlightsProvider())
-            elif nom == "transat":
-                from scrappervol.providers.transat import TransatProvider
-
-                sources.append(TransatProvider(settings))
-            else:
-                logger.warning("source inconnue ignorée : %s", nom)
-        except ImportError as erreur:
-            logger.warning("source %s non importable, ignorée : %s", nom, erreur)
-    return sources
 
 
 def build_scheduler(engine: Engine, settings: Settings, mailer: Mailer) -> BackgroundScheduler:
