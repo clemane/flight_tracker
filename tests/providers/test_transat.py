@@ -43,10 +43,16 @@ def _carte_vol_html(
     numeros_vol: tuple[str, ...] = ("TS938",),
     avec_compagnie: bool = True,
     avec_duree: bool = True,
+    prix_leurre: str | None = None,
 ) -> str:
     """Construit un bloc `.flight-card` minimal mais fidèle aux sélecteurs relevés dans la fixture
     réelle (tests/fixtures/transat_summary_yul_cun.html), pour isoler un seul comportement à la
-    fois sans dépendre de la mise en page complète de la page réelle."""
+    fois sans dépendre de la mise en page complète de la page réelle.
+
+    `prix_leurre` simule un `.price` affiché dans la carte elle-même (par exemple un prix par
+    segment), hors de `.flight-container-total` : il sert à vérifier que le total lu reste bien
+    celui du conteneur dédié, jamais le premier `.price` rencontré dans le document.
+    """
     bloc_compagnie = (
         f'<div class="common-airline">'
         f'<button class="panel-airlineType-btn" aria-label="{airline_label}"></button>'
@@ -60,6 +66,7 @@ def _carte_vol_html(
         if avec_duree
         else ""
     )
+    bloc_leurre = f'<div class="price">{prix_leurre}</div>' if prix_leurre is not None else ""
     numeros_html = "".join(f'<span class="panel-number">{n}</span>' for n in numeros_vol)
     return (
         '<div class="flight-card">'
@@ -70,6 +77,7 @@ def _carte_vol_html(
         f"</div>"
         f"{bloc_compagnie}"
         f'<div class="panel-type">{numeros_html}</div>'
+        f"{bloc_leurre}"
         f"</div>"
     )
 
@@ -175,6 +183,17 @@ def test_parse_summary_interprete_la_virgule_comme_separateur_decimal():
     assert offre.price_cad == 533
 
 
+def test_parse_summary_lit_le_total_du_conteneur_dedie_jamais_un_autre_prix():
+    """Si le sélecteur du total perdait son ancrage sur `.flight-container-total` et se contentait
+    du premier `.price` du document, il lirait ce prix affiché dans la carte plutôt que le total :
+    les cartes précèdent le total dans l'ordre du DOM produit par `_page_resume_html`."""
+    html = _page_resume_html(carte_aller=_carte_vol_html(prix_leurre="999$"))
+
+    (offre,) = parse_summary(html, REQUETE_REELLE)
+
+    assert offre.price_cad == 533
+
+
 def test_parse_summary_ecarte_un_prix_illisible():
     html = _page_resume_html(prix="Bientôt disponible")
 
@@ -239,8 +258,40 @@ def test_parse_summary_ecarte_si_un_bloc_est_sans_compagnie():
     assert parse_summary(html, REQUETE_REELLE) == []
 
 
+def test_parse_summary_ecarte_si_le_bouton_de_compagnie_a_une_etiquette_vide():
+    """Le bouton existe mais son `aria-label` ne contient rien d'exploitable après le préfixe : une
+    étiquette vide ne doit jamais devenir un nom de compagnie de repli comme "Inconnu"."""
+    html = _page_resume_html(carte_aller=_carte_vol_html(airline_label=""))
+
+    assert parse_summary(html, REQUETE_REELLE) == []
+
+
+def test_parse_summary_ecarte_si_plus_de_deux_blocs_de_vol():
+    """Un itinéraire à plus de deux segments (multi-destinations) n'a jamais été observé sur ce
+    balisage : plutôt que de deviner lesquels des blocs sont l'aller et le retour, l'offre entière
+    est écartée — même si les deux premiers blocs, pris isolément, ont l'air valides.
+
+    Le troisième bloc est ajouté après les deux blocs valides (aller puis retour) : une
+    implémentation qui se contenterait de vérifier « au moins deux blocs » plutôt que « exactement
+    deux » retiendrait silencieusement les deux premiers et ne verrait jamais la différence."""
+    troisieme_carte = _carte_vol_html(numeros_vol=("TS100",))
+    html = _page_resume_html().replace("</body>", f"{troisieme_carte}</body>", 1)
+
+    assert parse_summary(html, REQUETE_REELLE) == []
+
+
 def test_parse_summary_tolere_une_duree_absente():
     html = _page_resume_html(carte_aller=_carte_vol_html(avec_duree=False))
+
+    (offre,) = parse_summary(html, REQUETE_REELLE)
+
+    assert offre.duration_minutes is None
+
+
+def test_parse_summary_ignore_une_duree_de_zero_minute_comme_illisible():
+    """« 0min » est un défaut d'affichage comme « 0$ » : le compter comme une vraie durée fausserait
+    le total plutôt que de simplement l'omettre, comme le fait déjà une durée absente."""
+    html = _page_resume_html(carte_aller=_carte_vol_html(duree="0min"))
 
     (offre,) = parse_summary(html, REQUETE_REELLE)
 
