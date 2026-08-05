@@ -68,3 +68,18 @@ def sans_pause():
     """Remplace la pause entre requêtes ; les tests ne doivent jamais dormir."""
     appels: list[float] = []
     return appels.append, appels
+
+
+class FauxMailer:
+    """Collecte les envois au lieu de les transmettre à un vrai serveur SMTP."""
+
+    def __init__(self) -> None:
+        self.envois: list[tuple[str, str]] = []
+
+    def send(self, mail, to: str) -> None:
+        self.envois.append((mail.subject, to))
+
+
+@pytest.fixture
+def faux_mailer():
+    return FauxMailer()
