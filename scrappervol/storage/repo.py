@@ -140,6 +140,10 @@ def best_by_departure_date(
         .subquery()
     )
 
+    # La fenêtre de fraîcheur n'est filtrée qu'une fois, dans la sous-requête. La rejouer ici
+    # serait sans effet : un relevé périmé ne remonte que s'il touche exactement un plancher
+    # calculé, lui, sur les seuls relevés frais — et le tri ci-dessous le range alors derrière
+    # son jumeau récent, que `setdefault` retient.
     lignes = session.exec(
         select(Observation)
         .join(
@@ -148,7 +152,6 @@ def best_by_departure_date(
             & (col(Observation.price_cad) == planchers.c.plancher),
         )
         .where(Observation.route_id == route_id)
-        .where(col(Observation.observed_at) >= since)
         .order_by(col(Observation.price_cad), col(Observation.observed_at).desc())
     ).all()
 

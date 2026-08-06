@@ -128,6 +128,20 @@ class TestEventail:
         assert 'data-prix="700"' in corps
         assert 'data-prix="300"' not in corps
 
+    def test_la_fenetre_setend_vers_le_passe_pas_seulement_sur_linstant(self, client, session):
+        """Les relevés datent du dernier passage de scan, jamais de la seconde présente.
+
+        Une fenêtre réduite à l'instant courant viderait la page en production tout en laissant
+        les tests verts, puisqu'ils horodatent au même instant que la requête.
+        """
+        trajet = _trajet(session)
+        _releve(session, trajet, 640, date(2027, 3, 11), quand=MAINTENANT - timedelta(days=2))
+
+        corps = client.get(f"/routes/{trajet.id}/dates").text
+
+        assert 'data-prix="640"' in corps
+        assert 'data-dates="1"' in corps
+
     def test_sans_releve_recent_la_page_le_dit(self, client, session):
         trajet = _trajet(session)
 
