@@ -34,6 +34,28 @@ def html_recapitulatif() -> str:
     return FIXTURE.read_text(encoding="utf-8")
 
 
+def page_minimale(
+    *,
+    villes: list[str] | None = None,
+    total: str = "Total général 540,71CAD",
+) -> str:
+    """Récapitulatif réduit aux éléments que le parseur consulte, pour éprouver ses gardes.
+
+    La fixture réelle décrit un trajet cohérent : elle ne permet pas de fabriquer les incohérences
+    contre lesquelles ces gardes existent (un retour qui part d'ailleurs, un itinéraire à trois
+    tronçons).
+    """
+    if villes is None:
+        villes = ["Montréal (YUL) Cancún (CUN)", "Cancún (CUN) Montréal (YUL)"]
+    paires = "".join(f"<ac-ui-city-pairing>{v}</ac-ui-city-pairing>" for v in villes)
+    return (
+        f'<html><body><span class="total-price">{total}</span>{paires}'
+        "<ac-ui-flight-block-summary-pres>Sans escale 5h</ac-ui-flight-block-summary-pres>"
+        "<ac-ui-flight-block-summary-pres>1 escale 13h 30m</ac-ui-flight-block-summary-pres>"
+        "</body></html>"
+    )
+
+
 class TestPrixEnCad:
     def test_lit_le_total_masque_du_recapitulatif(self) -> None:
         assert _prix_en_cad("Total général 540,71CAD 540,71\xa0$ CA") == 541
@@ -67,6 +89,15 @@ class TestEscales:
     def test_ne_confond_pas_les_chiffres_de_l_horaire_avec_des_escales(self) -> None:
         """Le texte d'un bloc de vol est truffé de chiffres (heures, durées, dates)."""
         assert _escales("Sans escale 5h 08:00 YUL 13:00 CUN durée totale 5 heures") == 0
+
+    def test_sans_escale_prime_sur_un_chiffre_croise_ailleurs(self) -> None:
+        """Le texte d'un bloc agrège tout ce qu'il contient, y compris des mentions voisines.
+
+        « Sans escale » décrit le vol ; un « 1 escale » croisé plus loin décrit autre chose. Sans
+        priorité explicite, un vol direct serait compté à une escale — et son prix, comparé à
+        celui d'un vol avec correspondance.
+        """
+        assert _escales("Sans escale 5h — les vols avec 1 escale durent plus longtemps") == 0
 
     @pytest.mark.parametrize("texte", ["", "08:00 YUL 13:00 CUN"])
     def test_rend_none_si_rien_n_est_annonce(self, texte: str) -> None:
@@ -181,6 +212,32 @@ class TestParseReviewTrip:
             return_date=date(2026, 11, 10),
         )
         assert parse_review_trip(html_recapitulatif, autre) == []
+
+    def test_ecarte_un_retour_qui_ne_ramene_pas_au_point_de_depart(self) -> None:
+        """L'aller peut être conforme et le retour avoir dérivé — le prix resterait lisible."""
+        html = page_minimale(
+            villes=["Montréal (YUL) Cancún (CUN)", "Cancún (CUN) Toronto (YYZ)"]
+        )
+        assert parse_review_trip(html, REQUETE) == []
+
+    def test_accepte_un_recapitulatif_coherent(self) -> None:
+        """Contre-épreuve du test précédent : la garde ne rejette pas tout."""
+        assert len(parse_review_trip(page_minimale(), REQUETE)) == 1
+
+    def test_ecarte_un_recapitulatif_a_un_seul_troncon_de_villes(self) -> None:
+        html = page_minimale(villes=["Montréal (YUL) Cancún (CUN)"])
+        assert parse_review_trip(html, REQUETE) == []
+
+    def test_ecarte_un_itineraire_a_plus_de_deux_troncons(self) -> None:
+        """Un multi-destinations : impossible de savoir lequel des tronçons est l'aller."""
+        html = page_minimale(
+            villes=[
+                "Montréal (YUL) Cancún (CUN)",
+                "Cancún (CUN) Toronto (YYZ)",
+                "Toronto (YYZ) Montréal (YUL)",
+            ]
+        )
+        assert parse_review_trip(html, REQUETE) == []
 
     def test_ecarte_une_page_sans_total(self) -> None:
         assert parse_review_trip("<html><body>rien</body></html>", REQUETE) == []
