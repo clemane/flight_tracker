@@ -250,3 +250,40 @@ def test_exception_already_sent_est_borne_au_trajet(session):
 
     assert repo.exception_already_sent(session, trajet_a.id, "partage") is True
     assert repo.exception_already_sent(session, trajet_b.id, "partage") is False
+
+
+def test_un_echec_denvoi_conserve_la_date_du_dernier_succes(session):
+    """C'est cette date qui dit depuis quand le canal est muet.
+
+    L'effacer réduirait le diagnostic à « en panne », sans permettre de distinguer une coupure
+    d'une heure d'un canal mort depuis trois semaines.
+    """
+    repo.record_notify_success(session, MAINTENANT)
+
+    plus_tard = MAINTENANT + timedelta(hours=6)
+    sante = repo.record_notify_failure(session, "refusé", plus_tard)
+
+    assert sante.last_success_at == MAINTENANT
+    assert sante.last_failure_at == plus_tard
+    assert sante.consecutive_failures == 1
+
+
+def test_les_echecs_denvoi_saccumulent_jusquau_prochain_succes(session):
+    for i in range(3):
+        repo.record_notify_failure(session, "refusé", MAINTENANT + timedelta(hours=i))
+
+    assert repo.get_or_create_notify_health(session).consecutive_failures == 3
+
+    sante = repo.record_notify_success(session, MAINTENANT + timedelta(hours=4))
+
+    assert sante.consecutive_failures == 0
+    assert sante.last_error is None
+
+
+def test_la_sante_du_canal_est_creee_a_la_demande(session):
+    sante = repo.get_or_create_notify_health(session)
+
+    assert sante.channel == "email"
+    assert sante.consecutive_failures == 0
+    assert sante.last_success_at is None
+    assert sante.last_failure_at is None

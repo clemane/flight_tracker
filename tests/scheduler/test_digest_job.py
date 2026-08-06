@@ -11,6 +11,7 @@ from scrappervol.storage.models import (
     Alert,
     AlertKind,
     DailyLow,
+    NotifyHealth,
     Observation,
     ProviderHealth,
     Route,
@@ -379,3 +380,46 @@ class TestValidationDesTachesQuotidiennes:
 
         with Session(base_isolee) as lecture:
             assert len(lecture.exec(select(Observation)).all()) == 1
+
+
+class MailerEnPanne:
+    """Refuse tout envoi, comme un serveur SMTP injoignable."""
+
+    def send(self, mail, to: str) -> None:
+        raise RuntimeError("envoi SMTP impossible : [Errno 111] Connection refused")
+
+
+def test_un_digest_non_remis_laisse_une_trace_consultable(session, reglages):
+    """Le digest quotidien manquant est le premier symptôme visible d'un canal mort.
+
+    Sans trace, son absence se confond avec « rien à signaler aujourd'hui » — un silence que le
+    système est justement censé rendre impossible à confondre avec une panne.
+    """
+    _trajet(session)
+
+    assert send_digest(session, reglages, MailerEnPanne(), MAINTENANT) is False
+
+    sante = session.get(NotifyHealth, "email")
+    assert sante is not None
+    assert sante.consecutive_failures == 1
+    assert "Connection refused" in (sante.last_error or "")
+
+
+def test_un_digest_non_remis_nest_pas_journalise_comme_envoye(session, reglages):
+    """Sans quoi le digest du lendemain se croirait déjà parti."""
+    _trajet(session)
+
+    send_digest(session, reglages, MailerEnPanne(), MAINTENANT)
+
+    assert session.exec(select(Alert).where(Alert.kind == AlertKind.DIGEST)).all() == []
+
+
+def test_un_digest_remis_marque_le_canal_comme_sain(session, reglages, faux_mailer):
+    _trajet(session)
+
+    send_digest(session, reglages, faux_mailer, MAINTENANT)
+
+    sante = session.get(NotifyHealth, "email")
+    assert sante is not None
+    assert sante.last_success_at == MAINTENANT
+    assert sante.consecutive_failures == 0

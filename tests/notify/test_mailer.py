@@ -75,10 +75,19 @@ def test_aucun_defaut_quand_la_configuration_est_reelle():
     assert defaut_de_configuration(reglage) is None
 
 
-def test_un_domaine_qui_contient_example_sans_letre_reste_valide():
-    """`example` doit être le domaine, pas un morceau de mot, sinon on refuse des hôtes réels."""
-    reglage = Settings(smtp_host="smtp.example-hosting.ca", alert_to="a@b.ca")
-    assert defaut_de_configuration(reglage) is None
+@pytest.mark.parametrize(
+    "hote",
+    [
+        "smtp.example-hosting.ca",
+        # « example.com » est ici une sous-chaîne de « example.company », sans en être le suffixe.
+        # Un test d'appartenance au lieu d'un test de suffixe refuserait donc cet hôte réel.
+        "mail.example.company.ca",
+        "smtp.example.com.mondomaine.ca",
+    ],
+)
+def test_un_hote_reel_qui_contient_example_reste_valide(hote):
+    """`example.com` doit terminer le nom, pas y figurer : sinon on refuse des hôtes légitimes."""
+    assert defaut_de_configuration(Settings(smtp_host=hote, alert_to="a@b.ca")) is None
 
 
 def test_le_null_mailer_journalise_au_lieu_denvoyer(caplog):

@@ -12,10 +12,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
 from scrappervol.config import Settings
 from scrappervol.storage.models import NotifyHealth
 from scrappervol.web.app import create_app, get_now, get_session
+from scrappervol.web.routes import EtatCourriel
 
 MAINTENANT = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
 
@@ -173,3 +175,57 @@ class TestEnvoiDeTest:
         client = _client(engine, session, **REGLAGE_REEL)
 
         assert getattr(client, methode)("/health/test-courriel").status_code == 405
+
+    def test_le_resultat_survit_a_la_fermeture_de_la_session(self, base_isolee, monkeypatch):
+        """Sur base isolée, faute de quoi l'épreuve ne démontre rien.
+
+        La session du web est ouverte par `with Session(engine)`, qui ne valide pas en sortie :
+        un `flush` sans `commit` disparaîtrait à la fermeture. La fixture en mémoire partageant
+        une connexion unique, elle rendrait cette perte invisible.
+        """
+        facteur = MagicMock()
+        facteur.send.side_effect = RuntimeError("refusé")
+        monkeypatch.setattr("scrappervol.web.routes.build_mailer", lambda _: facteur)
+
+        application = create_app(base_isolee, Settings(**REGLAGE_REEL))
+        application.dependency_overrides[get_now] = lambda: MAINTENANT
+        TestClient(application).post("/health/test-courriel")
+
+        with Session(base_isolee) as lecture:
+            sante = lecture.get(NotifyHealth, "email")
+            assert sante is not None
+            assert sante.consecutive_failures == 1
+
+
+class TestInvariantsDeLaVue:
+    def test_une_absence_de_configuration_nest_pas_presentee_comme_une_panne(self):
+        """Les deux diagnostics s'excluent : l'un se règle dans le `.env`, l'autre se subit.
+
+        Un canal jamais configuré peut porter des échecs anciens, hérités d'une configuration
+        précédente. Les afficher comme « envoi en échec » enverrait chercher une panne réseau là
+        où il ne manque qu'un réglage.
+        """
+        etat = EtatCourriel(
+            defaut_configuration="aucun hôte SMTP configuré (SMTP_HOST)",
+            destinataire="",
+            last_success_at=None,
+            last_failure_at=MAINTENANT,
+            consecutive_failures=7,
+            last_error="refusé",
+        )
+
+        assert not etat.utilisable
+        assert not etat.en_panne
+
+    def test_une_configuration_reelle_en_echec_est_une_panne(self):
+        etat = EtatCourriel(
+            defaut_configuration=None,
+            destinataire="clement@courriel.ca",
+            last_success_at=None,
+            last_failure_at=MAINTENANT,
+            consecutive_failures=1,
+            last_error="refusé",
+        )
+
+        assert etat.utilisable
+        assert etat.en_panne
