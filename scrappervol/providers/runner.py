@@ -18,6 +18,27 @@ from scrappervol.storage import repo
 
 logger = logging.getLogger(__name__)
 
+# Combien de requêtes une source consacre à un trajet par passage, quand son coût le permet.
+#
+# Le plafond commun de `max_queries_per_route` était calibré sur les sources qui pilotent un
+# navigateur : Air Transat et Air Canada ouvrent Chromium, remplissent un formulaire et attendent
+# un parcours complet, soit une minute et plus par requête. Google Flights ne fait qu'un appel
+# HTTP de quelques secondes. Les brider au même chiffre revenait à régler la source la moins
+# coûteuse sur les contraintes de la plus lourde.
+#
+# L'enjeu est la vitesse de couverture, non le volume : le planificateur fait tourner les
+# combinaisons de dates d'un passage à l'autre, si bien que le plafond fixe en combien de temps
+# un trajet flexible est entièrement sondé. Mesuré sur un horizon de douze mois, doubler ce
+# plafond ramène le cycle complet de 59 à 29 rotations — de dix jours à cinq.
+#
+# Kayak reste au plafond commun malgré son faible coût : il balaye déjà les jours voisins de
+# chaque date demandée, et couvre donc sept fois plus de terrain par requête.
+PLAFONDS_PAR_SOURCE = {"google_flights": 12}
+
+
+def plafond_de(provider: str, settings: Settings) -> int:
+    return PLAFONDS_PAR_SOURCE.get(provider, settings.max_queries_per_route)
+
 
 @dataclass
 class RunReport:
@@ -64,7 +85,7 @@ def run_provider(
                 trajet.to_policy(),
                 today=now.date(),
                 rotation=rotation,
-                max_queries=settings.max_queries_per_route,
+                max_queries=plafond_de(provider.name, settings),
             )
             for requete in requetes:
                 if not premiere_requete:
