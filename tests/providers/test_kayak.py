@@ -11,12 +11,16 @@ from scrappervol.providers.kayak import (
     DEVISE,
     KayakProvider,
     _compagnie,
+    _dans_la_fenetre,
+    _date_flexible,
     _duree_minutes,
     _escales,
+    _jour_de_jambe,
     _lien,
     _prix_le_plus_bas,
     _sondage_termine,
     _valider_portee,
+    amplitude_flexible,
     parse_poll,
     url_recherche,
 )
@@ -478,3 +482,255 @@ def test_fumee_reseau_kayak() -> None:
     assert [o.price_cad for o in offres] == sorted(o.price_cad for o in offres)
     assert all(o.return_date == requete.return_date for o in offres)
     assert any(o.duration_minutes for o in offres)
+
+
+class TestAmplitudeFlexible:
+    """Le battement de dates demandé au site.
+
+    C'est ce qui sépare une veille qui voit passer un tarif d'erreur d'une veille qui ne le voit
+    jamais : un tel tarif n'existe que certains jours.
+    """
+
+    def test_sans_fenetre_aucun_battement(self):
+        # Politique à dates fixes : on interroge exactement ce qui a été demandé.
+        assert amplitude_flexible(REQUETE_REELLE) == 0
+
+    def test_une_fenetre_large_donne_le_battement_maximal(self):
+        # Départ le 15, retour le 22, fenêtre du mois entier : trois jours de marge de tous
+        # les côtés, donc le battement maximal que le site honore.
+        requete = dataclasses.replace(
+            REQUETE_REELLE,
+            depart_date=date(2026, 11, 15),
+            return_date=date(2026, 11, 22),
+            calendar_window=(date(2026, 11, 1), date(2026, 11, 30)),
+        )
+        assert amplitude_flexible(requete) == 3
+
+    def test_une_date_proche_du_bord_reduit_le_battement(self):
+        # Départ le 3 pour une fenêtre ouvrant le 1er : deux jours de marge seulement. Demander
+        # trois ferait chercher au 31 octobre, hors de ce que la politique du trajet autorise.
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+        assert amplitude_flexible(requete) == 2
+
+    def test_le_battement_ne_depasse_jamais_ce_que_le_site_honore(self):
+        # Au-delà de trois jours, Kayak ignore la demande sans le dire et sert la seule date
+        # nominale : demander plus large ne donnerait qu'une couverture imaginaire.
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 1, 1), date(2027, 12, 31))
+        )
+        assert amplitude_flexible(requete) == 3
+
+    def test_le_battement_est_borne_par_le_bord_gauche(self):
+        # Départ le 3, fenêtre ouverte le 2 : un seul jour de marge avant.
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 2), date(2026, 11, 30))
+        )
+        assert amplitude_flexible(requete) == 1
+
+    def test_le_battement_est_borne_par_le_bord_droit(self):
+        # Retour le 10, fenêtre close le 12 : deux jours de marge après.
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 12))
+        )
+        assert amplitude_flexible(requete) == 2
+
+    def test_la_date_de_retour_borne_aussi(self):
+        """Le retour compte autant que l'aller.
+
+        Ne bornant que sur l'aller, un battement de trois jours autour d'un retour situé en fin
+        de fenêtre déborderait sur le mois suivant — hors de ce que la politique du trajet
+        autorise.
+        """
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 10, 1), date(2026, 11, 11))
+        )
+        assert amplitude_flexible(requete) == 1
+
+    def test_une_fenetre_degeneree_ne_donne_aucun_battement(self):
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 3), date(2026, 11, 10))
+        )
+        assert amplitude_flexible(requete) == 0
+
+    def test_une_date_hors_fenetre_ne_donne_pas_un_battement_negatif(self):
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 12, 1), date(2026, 12, 31))
+        )
+        assert amplitude_flexible(requete) == 0
+
+
+class TestUrlFlexible:
+    def test_une_date_sans_battement_reste_nue(self):
+        assert _date_flexible(date(2026, 11, 15), 0) == "2026-11-15"
+
+    @pytest.mark.parametrize("battement", [-1, 0])
+    def test_un_battement_nul_ou_negatif_ne_produit_pas_de_suffixe(self, battement):
+        assert _date_flexible(date(2026, 11, 15), battement) == "2026-11-15"
+
+    def test_le_suffixe_porte_le_nombre_de_jours(self):
+        assert _date_flexible(date(2026, 11, 15), 3) == "2026-11-15-flexible-3days"
+
+    def test_l_url_demande_le_battement_sur_les_deux_dates(self):
+        requete = dataclasses.replace(
+            REQUETE_REELLE,
+            depart_date=date(2026, 11, 15),
+            return_date=date(2026, 11, 22),
+            calendar_window=(date(2026, 11, 1), date(2026, 11, 30)),
+        )
+        url = url_recherche(requete)
+        assert "2026-11-15-flexible-3days/2026-11-22-flexible-3days" in url
+
+    def test_l_url_reste_nue_sans_fenetre(self):
+        assert "flexible" not in url_recherche(REQUETE_REELLE)
+
+
+class TestDatesReelles:
+    def test_la_date_lue_est_celle_du_document(self):
+        jambes = {"aller": {"departure": "2026-11-05T21:10:00"}}
+        resultat = {"legs": [{"id": "aller"}]}
+        assert _jour_de_jambe(resultat, jambes, 0) == date(2026, 11, 5)
+
+    def test_le_retour_est_la_seconde_jambe(self):
+        jambes = {
+            "aller": {"departure": "2026-11-05T21:10:00"},
+            "retour": {"departure": "2026-11-12T09:55:00"},
+        }
+        resultat = {"legs": [{"id": "aller"}, {"id": "retour"}]}
+        assert _jour_de_jambe(resultat, jambes, 1) == date(2026, 11, 12)
+
+    def test_une_jambe_absente_rend_none(self):
+        assert _jour_de_jambe({"legs": [{"id": "aller"}]}, {}, 1) is None
+        assert _jour_de_jambe({"legs": []}, {}, 0) is None
+
+    def test_une_date_illisible_rend_none(self):
+        jambes = {"aller": {"departure": "le cinq novembre"}}
+        assert _jour_de_jambe({"legs": [{"id": "aller"}]}, jambes, 0) is None
+
+    def test_une_date_absente_rend_none(self):
+        assert _jour_de_jambe({"legs": [{"id": "aller"}]}, {"aller": {}}, 0) is None
+
+    def test_l_offre_porte_la_date_trouvee_et_non_la_date_demandee(self):
+        """Le cœur du balayage : ranger le prix sous le bon jour.
+
+        En élargissant, le vol le moins cher n'est presque jamais celui de la date nominale.
+        L'enregistrer sous celle-ci rangerait un tarif du 5 novembre parmi ceux du 3 : les deux
+        journées s'en trouveraient faussées, et l'alerte annoncerait un vol qui n'existe pas ce
+        jour-là.
+        """
+        donnees = {
+            "results": [
+                {
+                    "type": "core",
+                    "resultId": "r1",
+                    "legs": [{"id": "aller", "segments": [{"id": "s1"}]},
+                             {"id": "retour", "segments": [{"id": "s2"}]}],
+                    "bookingOptions": [
+                        {"displayPrice": {"price": 606, "currency": "CAD"}, "providerCode": "P"}
+                    ],
+                }
+            ],
+            "legs": {
+                "aller": {"departure": "2026-11-05T21:10:00", "duration": 430},
+                "retour": {"departure": "2026-11-12T09:55:00", "duration": 460},
+            },
+            "segments": {"s1": {"airline": "AC"}, "s2": {"airline": "AC"}},
+            "airlines": {"AC": {"name": "Air Canada"}},
+        }
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+
+        (offre,) = parse_poll(donnees, requete)
+
+        assert offre.depart_date == date(2026, 11, 5)
+        assert offre.return_date == date(2026, 11, 12)
+        assert offre.price_cad == 606
+
+    def test_sans_date_lisible_on_retombe_sur_la_date_demandee(self):
+        donnees = {
+            "results": [
+                {
+                    "type": "core",
+                    "resultId": "r1",
+                    "legs": [{"id": "inconnue", "segments": [{"id": "s1"}]}],
+                    "bookingOptions": [
+                        {"displayPrice": {"price": 700, "currency": "CAD"}, "providerCode": "P"}
+                    ],
+                }
+            ],
+        }
+        (offre,) = parse_poll(donnees, REQUETE_REELLE)
+
+        assert offre.depart_date == REQUETE_REELLE.depart_date
+
+    def test_un_vol_hors_fenetre_est_ecarte(self):
+        """Le site peut déborder de ce qu'on lui a demandé.
+
+        La fenêtre vient de la politique du trajet : un vol de décembre n'a rien à faire dans
+        l'historique de novembre, même s'il est moins cher.
+        """
+        donnees = {
+            "results": [
+                {
+                    "type": "core",
+                    "resultId": "hors-fenetre",
+                    "legs": [{"id": "aller", "segments": [{"id": "s1"}]}],
+                    "bookingOptions": [
+                        {"displayPrice": {"price": 195, "currency": "CAD"}, "providerCode": "P"}
+                    ],
+                }
+            ],
+            "legs": {"aller": {"departure": "2026-12-24T21:10:00", "duration": 430}},
+        }
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+
+        assert parse_poll(donnees, requete) == []
+
+    def test_un_retour_hors_fenetre_est_ecarte(self):
+        donnees = {
+            "results": [
+                {
+                    "type": "core",
+                    "resultId": "retour-hors-fenetre",
+                    "legs": [{"id": "aller", "segments": [{"id": "s1"}]},
+                             {"id": "retour", "segments": [{"id": "s2"}]}],
+                    "bookingOptions": [
+                        {"displayPrice": {"price": 195, "currency": "CAD"}, "providerCode": "P"}
+                    ],
+                }
+            ],
+            "legs": {
+                "aller": {"departure": "2026-11-28T21:10:00", "duration": 430},
+                "retour": {"departure": "2026-12-05T09:55:00", "duration": 460},
+            },
+        }
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+
+        assert parse_poll(donnees, requete) == []
+
+
+class TestBornesDeFenetre:
+    @pytest.mark.parametrize(
+        "jour", [date(2026, 11, 1), date(2026, 11, 15), date(2026, 11, 30)]
+    )
+    def test_les_bornes_sont_incluses(self, jour):
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+        assert _dans_la_fenetre(jour, requete)
+
+    @pytest.mark.parametrize("jour", [date(2026, 10, 31), date(2026, 12, 1)])
+    def test_ce_qui_deborde_est_refuse(self, jour):
+        requete = dataclasses.replace(
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
+        )
+        assert not _dans_la_fenetre(jour, requete)
+
+    def test_sans_fenetre_tout_passe(self):
+        assert _dans_la_fenetre(date(2030, 1, 1), REQUETE_REELLE)

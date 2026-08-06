@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from scrappervol.config import Settings
@@ -59,17 +60,56 @@ _MAX_OFFRES = 20
 # personne. Seul `core` désigne un vrai résultat réservable.
 _TYPE_VOL = "core"
 
+# Battement maximal accepté par le site, en jours de part et d'autre de chaque date.
+#
+# Trois, et pas davantage : au-delà, Kayak accepte l'URL sans broncher mais **ignore la demande
+# en silence** et sert les résultats de la seule date nominale. Mesuré à la reconnaissance sur
+# YUL->PAR du 15 novembre — à 3 jours, 8129 résultats répartis sur sept journées ; à 5, 7, 10 et
+# 14 jours, 1636 résultats tous datés du 15. Rien dans la réponse ne signale l'abandon : demander
+# plus large ne coûterait pas une erreur, seulement une couverture imaginaire.
+_FLEX_JOURS_MAX = 3
+
 
 class _SondageIndisponibleError(ProviderError):
     """Aucune réponse de sondage exploitable n'a été captée pendant la navigation."""
 
 
+def amplitude_flexible(query: SearchQuery) -> int:
+    """Jours de battement à demander de part et d'autre des dates, sans sortir de la fenêtre.
+
+    Un tarif d'erreur n'existe que certains jours : interroger une seule date, c'est ne
+    pratiquement jamais tomber dessus. Quand la politique du trajet autorise une fenêtre, on
+    demande à Kayak d'élargir autour des dates prévues — sept jours couverts pour le prix d'un
+    seul appel réseau. Relevé de reconnaissance sur YUL->PAR : 606 $ en élargissant, contre
+    744 $ à date fixe.
+
+    Le battement est symétrique parce que le site ne sait pas en demander d'autre, et borné par
+    la marge la plus courte des deux dates : la fenêtre du trajet fait autorité, on n'en sort
+    pas pour gagner un jour.
+    """
+    if query.calendar_window is None:
+        return 0
+    debut, fin = query.calendar_window
+    marges = [(query.depart_date - debut).days, (fin - query.depart_date).days]
+    if query.return_date is not None:
+        marges += [(query.return_date - debut).days, (fin - query.return_date).days]
+    return max(0, min(_FLEX_JOURS_MAX, *marges))
+
+
+def _date_flexible(jour: date, battement: int) -> str:
+    """`2026-11-15`, ou `2026-11-15-flexible-3days` quand un battement est demandé."""
+    if battement <= 0:
+        return jour.isoformat()
+    return f"{jour.isoformat()}-flexible-{battement}days"
+
+
 def _texte_requete(query: SearchQuery) -> str:
     """`YUL-PAR/2026-11-03/2026-11-10`, ou sans la seconde date pour un aller simple."""
     trajet = f"{query.origin}-{query.destination}"
-    dates = query.depart_date.isoformat()
+    battement = amplitude_flexible(query)
+    dates = _date_flexible(query.depart_date, battement)
     if query.return_date is not None:
-        dates += f"/{query.return_date.isoformat()}"
+        dates += f"/{_date_flexible(query.return_date, battement)}"
     return f"{trajet}/{dates}"
 
 
@@ -78,6 +118,36 @@ def url_recherche(query: SearchQuery) -> str:
         f"{URL_BASE}/{_texte_requete(query)}"
         f"?sort={_TRI_PRIX_CROISSANT}&currency={DEVISE}"
     )
+
+
+def _jour_de_jambe(resultat: dict, jambes: dict, rang: int) -> date | None:
+    """Jour de départ de la jambe demandée (0 = aller, 1 = retour), d'après le document.
+
+    Indispensable dès qu'on élargit les dates : le vol le moins cher n'est alors plus celui du
+    jour demandé. L'enregistrer sous la date nominale rangerait un tarif du 5 novembre parmi
+    ceux du 3, faussant l'historique des deux journées à la fois.
+    """
+    references = resultat.get("legs") or []
+    if rang >= len(references):
+        return None
+    jambe = jambes.get(references[rang].get("id"))
+    if not isinstance(jambe, dict):
+        return None
+    depart = jambe.get("departure")
+    if not isinstance(depart, str):
+        return None
+    try:
+        return date.fromisoformat(depart[:10])
+    except ValueError:
+        return None
+
+
+def _dans_la_fenetre(jour: date, query: SearchQuery) -> bool:
+    """Le site peut déborder de ce qu'on lui a demandé ; la fenêtre du trajet fait foi."""
+    if query.calendar_window is None:
+        return True
+    debut, fin = query.calendar_window
+    return debut <= jour <= fin
 
 
 def _valider_portee(query: SearchQuery) -> None:
@@ -203,13 +273,25 @@ def parse_poll(donnees: dict, query: SearchQuery) -> list[FlightOffer]:
         if query.max_stops is not None and escales > query.max_stops:
             continue
 
+        # Dates réellement trouvées, qui ne sont plus celles demandées dès qu'on élargit. On
+        # retombe sur les dates nominales quand le document ne les porte pas — mieux vaut une
+        # offre datée approximativement qu'une aubaine perdue.
+        depart_reel = _jour_de_jambe(resultat, jambes, 0) or query.depart_date
+        if not _dans_la_fenetre(depart_reel, query):
+            continue
+        retour_reel = query.return_date
+        if query.return_date is not None:
+            retour_reel = _jour_de_jambe(resultat, jambes, 1) or query.return_date
+            if not _dans_la_fenetre(retour_reel, query):
+                continue
+
         offres.append(
             FlightOffer(
                 provider=NOM,
                 origin=query.origin,
                 destination=query.destination,
-                depart_date=query.depart_date,
-                return_date=query.return_date,
+                depart_date=depart_reel,
+                return_date=retour_reel,
                 price_cad=montant,
                 price_original=float(montant),
                 currency_original=DEVISE,
