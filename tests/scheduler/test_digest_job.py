@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from scrappervol.config import Settings
 from scrappervol.core.types import DatePolicyKind, FlightOffer
@@ -343,3 +343,39 @@ def test_la_purge_epargne_lhistorique_des_plus_bas(session, reglages):
     purge_old_data(session, reglages, MAINTENANT)
 
     assert repo.daily_low_for(session, trajet.id, date(2024, 1, 1)) is not None
+
+
+class TestValidationDesTachesQuotidiennes:
+    """Ce que le digest et la purge laissent réellement en base.
+
+    Sur `base_isolee` (fichier) et non sur la base en mémoire : celle-ci partage une connexion
+    unique, où une écriture non validée reste visible d'une session à l'autre. Ces épreuves n'y
+    distingueraient pas une donnée enregistrée d'une donnée simplement écrite.
+    """
+
+    def test_la_trace_du_digest_envoye_est_enregistree(
+        self, base_isolee, reglages, faux_mailer
+    ) -> None:
+        """Sans trace validée, rien ne distingue un digest déjà parti d'un digest à envoyer."""
+        with Session(base_isolee) as ecriture:
+            _trajet(ecriture)
+            assert send_digest(ecriture, reglages, faux_mailer, MAINTENANT) is True
+
+        with Session(base_isolee) as lecture:
+            alertes = lecture.exec(select(Alert).where(Alert.kind == AlertKind.DIGEST)).all()
+            assert len(alertes) == 1
+
+    def test_la_purge_est_enregistree(self, base_isolee, reglages) -> None:
+        """Une purge non validée rend le travail au prochain passage, indéfiniment."""
+        with Session(base_isolee) as ecriture:
+            trajet = _trajet(ecriture)
+            ecriture.add(
+                Observation.from_offer(trajet.id, _offre(612), MAINTENANT - timedelta(days=120))
+            )
+            ecriture.add(Observation.from_offer(trajet.id, _offre(500), MAINTENANT))
+            ecriture.commit()
+
+            assert purge_old_data(ecriture, reglages, MAINTENANT) == 1
+
+        with Session(base_isolee) as lecture:
+            assert len(lecture.exec(select(Observation)).all()) == 1

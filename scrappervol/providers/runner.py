@@ -40,6 +40,11 @@ def run_provider(
 
     Le contrat est strict : quoi qu'il arrive dans le scraper, cette fonction retourne un rapport.
     C'est ce qui garantit qu'une source cassée n'emporte pas les deux autres.
+
+    L'état de santé est validé ici, et non laissé à l'appelant : c'est lui qui porte le compte des
+    échecs consécutifs et la mise au repos. Le confier à une transaction plus large reviendrait à
+    le perdre en cas d'incident ultérieur — c'est-à-dire précisément quand il compte, une source
+    en panne devant rester marquée en panne au passage suivant.
     """
     rapport = RunReport(provider=provider.name)
     sante = repo.get_or_create_health(session, provider.name)
@@ -85,6 +90,7 @@ def run_provider(
             now,
             backoff_until(sante.consecutive_failures + 1, now),
         )
+        session.commit()
         return rapport
 
     total = sum(len(offres) for offres in rapport.offers_by_route.values())
@@ -99,7 +105,9 @@ def run_provider(
             now,
             backoff_until(sante.consecutive_failures + 1, now),
         )
+        session.commit()
         return rapport
 
     repo.record_provider_success(session, provider.name, total, now)
+    session.commit()
     return rapport

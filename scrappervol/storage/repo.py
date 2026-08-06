@@ -1,3 +1,16 @@
+"""Accès aux données.
+
+Aucune fonction de ce module ne valide la transaction : elles écrivent (`flush`) pour que les
+identifiants soient attribués et que les lectures suivantes voient les données, mais la décision
+de valider appartient à l'appelant, qui seul sait ce qui forme une unité de travail cohérente.
+
+Un passage de scan enregistre des observations, met à jour le plus bas du jour et pose une trace
+d'alerte : validé étape par étape, un incident au milieu laissait un état bancal — des
+observations sans le plus bas qu'elles justifiaient — qu'aucun passage ultérieur ne rattrapait.
+La règle a une exception assumée, du côté de l'appelant : ce qui suit l'envoi d'un courriel est
+validé immédiatement, un message parti ne pouvant pas être défait par un `rollback`.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -39,7 +52,7 @@ def record_observations(
     ]
     for observation in observations:
         session.add(observation)
-    session.commit()
+    session.flush()
     for observation in observations:
         session.refresh(observation)
     return observations
@@ -66,7 +79,7 @@ def upsert_daily_low(
     ligne.observation_id = observation.id
     ligne.provider = observation.provider
     session.add(ligne)
-    session.commit()
+    session.flush()
     session.refresh(ligne)
     return ligne
 
@@ -107,7 +120,7 @@ def purge_observations(session: Session, now: datetime, retention_days: int = 90
     """
     limite = now - timedelta(days=retention_days)
     resultat = session.exec(delete(Observation).where(col(Observation.observed_at) < limite))
-    session.commit()
+    session.flush()
     return int(resultat.rowcount or 0)
 
 
@@ -116,7 +129,7 @@ def get_or_create_health(session: Session, provider: str) -> ProviderHealth:
     if sante is None:
         sante = ProviderHealth(provider=provider)
         session.add(sante)
-        session.commit()
+        session.flush()
         session.refresh(sante)
     return sante
 
@@ -131,7 +144,7 @@ def record_provider_success(
     sante.last_error = None
     sante.offers_last_run = offers_count
     session.add(sante)
-    session.commit()
+    session.flush()
     session.refresh(sante)
     return sante
 
@@ -149,7 +162,7 @@ def record_provider_failure(
     sante.disabled_until = disabled_until
     sante.offers_last_run = 0
     session.add(sante)
-    session.commit()
+    session.flush()
     session.refresh(sante)
     return sante
 
@@ -184,6 +197,6 @@ def record_alert(
         payload=payload,
     )
     session.add(alerte)
-    session.commit()
+    session.flush()
     session.refresh(alerte)
     return alerte

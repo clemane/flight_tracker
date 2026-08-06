@@ -28,6 +28,20 @@ def session(engine):
         yield session
 
 
+@pytest.fixture
+def base_isolee(tmp_path):
+    """Moteur sur fichier, pour les épreuves qui portent sur la frontière transactionnelle.
+
+    La base en mémoire ci-dessus tient sur une connexion unique (`StaticPool`) : une seconde
+    session y lit les écritures non encore validées, si bien qu'un `flush` et un `commit` y sont
+    indiscernables. Toute épreuve d'atomicité menée dessus passerait sans rien démontrer. Sur
+    fichier, chaque session ouvre sa propre connexion et ne voit que ce qui est validé.
+    """
+    moteur = create_engine(f"sqlite:///{tmp_path / 'scrappervol-test.db'}")
+    SQLModel.metadata.create_all(moteur)
+    return moteur
+
+
 class FausseSource:
     """Source contrôlable : retourne des offres, ou lève, ou reste muette."""
 

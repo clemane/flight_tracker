@@ -51,7 +51,16 @@ def run_scan(
     now: datetime,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> ScanOutcome:
-    """Un passage complet d'une source : relève, enregistre, détecte, alerte."""
+    """Un passage complet d'une source : relève, enregistre, détecte, alerte.
+
+    Le passage forme une unité de travail : ou bien les observations, le plus bas du jour et les
+    traces d'alerte sont tous enregistrés, ou bien rien ne l'est. Une validation à chaque étape
+    laissait, en cas d'incident, des observations privées du plus bas qu'elles justifiaient —
+    lacune définitive, puisque le plus bas d'un jour ne se recalcule pas après coup.
+
+    Les traces d'alerte échappent à cette règle et sont validées dès l'envoi : un courriel parti
+    ne se rattrape pas par un `rollback`, et sans sa trace il repartirait au passage suivant.
+    """
     rapport = run_provider(session, provider, settings, now, sleeper=sleeper)
     resultat = ScanOutcome(provider=provider.name, failed=rapport.failed, skipped=rapport.skipped)
     if rapport.failed or rapport.skipped:
@@ -59,22 +68,28 @@ def run_scan(
 
     jour = now.date()
 
-    for route_id, offres in rapport.offers_by_route.items():
-        observations = repo.record_observations(session, route_id, offres, now)
-        resultat.offers_recorded += len(observations)
-        if not observations:
-            continue
+    try:
+        for route_id, offres in rapport.offers_by_route.items():
+            observations = repo.record_observations(session, route_id, offres, now)
+            resultat.offers_recorded += len(observations)
+            if not observations:
+                continue
 
-        meilleure = min(observations, key=lambda obs: obs.price_cad)
-        if repo.upsert_daily_low(session, route_id, jour, meilleure) is not None:
-            resultat.new_lows += 1
+            meilleure = min(observations, key=lambda obs: obs.price_cad)
+            if repo.upsert_daily_low(session, route_id, jour, meilleure) is not None:
+                resultat.new_lows += 1
 
-        trajet = session.get(Route, route_id)
-        if trajet is None:
-            continue
+            trajet = session.get(Route, route_id)
+            if trajet is None:
+                continue
 
-        if _traiter_exception(session, trajet, meilleure, settings, mailer, now):
-            resultat.exceptions_sent += 1
+            if _traiter_exception(session, trajet, meilleure, settings, mailer, now):
+                resultat.exceptions_sent += 1
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
     return resultat
 
@@ -137,6 +152,9 @@ def _traiter_exception(
         {"offer_hash": observation.offer_hash, "price_cad": observation.price_cad},
         now,
     )
+    # Validée sur-le-champ, sans attendre la fin du passage : le courriel est parti, et une trace
+    # annulée par un incident ultérieur ferait repartir la même alerte au prochain scan.
+    session.commit()
 
     return True
 
@@ -245,10 +263,12 @@ def send_digest(session: Session, settings: Settings, mailer: Mailer, now: datet
         payload={"find_count": donnees.find_count, "routes": len(donnees.blocks)},
         at=now,
     )
+    session.commit()
     return True
 
 
 def purge_old_data(session: Session, settings: Settings, now: datetime) -> int:
     supprimees = repo.purge_observations(session, now, settings.retention_days)
+    session.commit()
     logger.info("purge : %s observations supprimées", supprimees)
     return supprimees
