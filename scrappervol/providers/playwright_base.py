@@ -30,11 +30,17 @@ def fetch_html(
     interact: Callable[[Any], None] | None = None,
     stealth: bool = False,
     timeout_ms: int = 45_000,
+    headless: bool = True,
 ) -> str:
     """Charge une page avec Chromium et retourne son HTML, en conservant une capture de débogage.
 
     `interact` reçoit la page après chargement et avant `wait_selector` : c'est par là qu'on
     remplit un formulaire quand le site n'expose pas de page de résultats adressable par URL.
+
+    `headless=False` demande un navigateur à fenêtre, donc un serveur X (le conteneur en démarre
+    un au lancement, voir docker-entrypoint.sh). C'est ce dont Air Canada a besoin : son parcours
+    de réservation déroute vers une page d'erreur générique quand le navigateur est sans fenêtre,
+    et aboutit normalement sinon.
 
     La capture de débogage est écrite dans tous les cas, succès comme échec : c'est elle qui permet
     de réparer une dérive de sélecteur sans avoir à reproduire le problème (§10 du design). Une
@@ -49,7 +55,10 @@ def fetch_html(
     html = ""
     try:
         with sync_playwright() as playwright:
-            navigateur = playwright.chromium.launch(headless=True)
+            navigateur = playwright.chromium.launch(
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
             contexte = navigateur.new_context(
                 user_agent=AGENT_UTILISATEUR,
                 viewport={"width": 1440, "height": 900},

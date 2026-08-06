@@ -46,16 +46,20 @@ class Settings(BaseSettings):
     # deviendrait le plus bas permanent du trajet, `daily_low` étant indexé par (route_id, day)
     # sans le provider — ne s'applique plus.
     #
-    # `air_canada` : source définitivement écartée. L'essai de la tâche 12 a piloté le formulaire
-    # sans peine, mais chaque soumission retombait sur une page d'erreur (BKRW-DBS-999) produite
-    # côté client, et l'URL de résultats directe renvoie un 403 Akamai : aucun prix n'a pu être
-    # relevé. Le parcours est protégé contre l'automatisation, le contourner est hors sujet.
-    # Compte rendu : docs/superpowers/notes/2026-08-05-air-canada-abandon.md
+    # `air_canada` : source rouverte le 6 août après un premier abandon. L'essai de la tâche 12
+    # concluait à une protection anti-automatisation infranchissable ; la cause était plus simple
+    # — le navigateur tournait sans fenêtre. Le même parcours, mené par un navigateur à fenêtre
+    # (serveur X démarré par le conteneur), aboutit au récapitulatif de réservation et à son
+    # total. Compte rendu : docs/superpowers/notes/2026-08-05-air-canada-abandon.md
     #
-    # Google Flights renvoie déjà les vols Air Canada, à un prix aller-retour agrégé donc
-    # comparable — c'est cette comparabilité, pas le nombre de sources, qui fait la valeur de la
-    # détection pour cette route restée hors de portée.
-    enabled_providers: Annotated[list[str], NoDecode] = ["google_flights", "transat"]
+    # C'est la source la plus lente des trois (environ 80 s, contre un appel d'API pour Google
+    # Flights) : elle mène un parcours de réservation complet, aller puis retour, parce que les
+    # pages de résultats n'affichent que des tarifs « par personne, dans chaque sens ».
+    enabled_providers: Annotated[list[str], NoDecode] = [
+        "google_flights",
+        "transat",
+        "air_canada",
+    ]
 
     @field_validator("enabled_providers", mode="before")
     @classmethod

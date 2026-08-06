@@ -1,4 +1,25 @@
-# Air Canada : essai infructueux, source écartée
+# Air Canada : essai infructueux, source écartée — puis rouverte le 6 août
+
+> **Suite, 6 août 2026 — verdict renversé, la source est en service.**
+>
+> Le diagnostic ci-dessous était juste sur les faits et faux sur la cause. Ce n'était pas une
+> protection anti-automatisation infranchissable : le navigateur tournait **sans fenêtre**
+> (`headless=True`). Relancé à l'identique dans une vraie fenêtre — un serveur X sans écran
+> (Xvfb) suffit —, le même parcours, avec les mêmes sélecteurs que ceux relevés ci-dessous,
+> aboutit du premier coup à la page de résultats, puis au récapitulatif de réservation.
+>
+> Ce que la section « Ce qui n'a pas été tenté » listait comme piste à explorer plus tard
+> (« variation d'empreinte navigateur ») était donc le point décisif — mais par son signal le
+> plus grossier, pas par un réglage fin d'empreinte. Leçon retenue : devant un blocage attribué
+> à un score de confiance calculé côté client, éliminer d'abord le mode sans fenêtre, qui est de
+> loin le signal le plus visible qu'un navigateur puisse émettre.
+>
+> Détails du parcours retenu, des sélecteurs et de la nature du prix : voir
+> [2026-08-06-air-canada-reouverture.md](2026-08-06-air-canada-reouverture.md).
+
+---
+
+## Compte rendu d'origine (5 août) — conservé tel quel
 
 Contexte : tâche 12 (`.superpowers/sdd/2026-08-04-scrappervol-implementation/task-12-brief.md`),
 essai borné pour ajouter Air Canada comme source de prix. Budget de 90 minutes, porte de sortie

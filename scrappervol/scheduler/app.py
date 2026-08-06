@@ -21,12 +21,13 @@ __all__ = ["INTERVALLES", "JITTER_S", "build_providers", "build_scheduler"]
 logger = logging.getLogger(__name__)
 
 # Toute source constructible par build_providers doit figurer ici, sinon le câblage lève une
-# KeyError au démarrage. Air Canada n'y est pas : la source a été abandonnée (voir
-# docs/superpowers/notes/2026-08-05-air-canada-abandon.md), le réglage interval_air_canada_hours
-# subsiste dans Settings mais ne pilote plus rien.
+# KeyError au démarrage. Air Canada y est revenu le 6 août, après réouverture de la source (voir
+# docs/superpowers/notes/2026-08-06-air-canada-reouverture.md) ; son intervalle est le plus long
+# des trois, son parcours étant le plus lourd.
 INTERVALLES = {
     "google_flights": "interval_google_hours",
     "transat": "interval_transat_hours",
+    "air_canada": "interval_air_canada_hours",
 }
 
 # Décalage aléatoire appliqué à chaque passage, en secondes.
