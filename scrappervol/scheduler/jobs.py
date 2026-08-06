@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from scrappervol.config import Settings
 from scrappervol.detection.rules import (
+    FRAICHEUR_RELEVE_J,
     SEUIL_SOURCE_MUETTE_H,
     PriceContext,
     is_exception,
@@ -18,6 +19,7 @@ from scrappervol.detection.rules import (
 )
 from scrappervol.notify.mailer import Mailer
 from scrappervol.notify.render import (
+    DateAlternative,
     DigestData,
     ExceptionData,
     ProviderStatus,
@@ -31,6 +33,10 @@ from scrappervol.storage import repo
 from scrappervol.storage.models import AlertKind, Observation, Route
 
 logger = logging.getLogger(__name__)
+
+# Assez d'alternatives pour montrer que la date compte, assez peu pour que le courriel reste
+# lisible sur un téléphone.
+ALTERNATIVES_DIGEST = 3
 
 
 @dataclass
@@ -232,7 +238,43 @@ def _bloc_trajet(session: Session, route: Route, settings: Settings, now: dateti
             credibility_floor=settings.credibility_floor_cad,
         ),
         history_building=en_construction,
+        autres_dates=_dates_alternatives(session, route.id, ligne.price_cad, observation, now),
     )
+
+
+def _dates_alternatives(
+    session: Session,
+    route_id: int,
+    prix_mis_en_avant: int,
+    observation: Observation | None,
+    now: datetime,
+) -> tuple[DateAlternative, ...]:
+    """Les meilleures autres dates de départ relevées pour ce trajet.
+
+    La date déjà mise en avant est retirée : la répéter occuperait une ligne pour ne rien
+    apprendre. Les dates restent classées par prix, si bien qu'une alternative plus chère que
+    le prix du jour ne figure ici que faute de moins chère — ce que l'écart affiché montre.
+    """
+    candidates = repo.best_by_departure_date(
+        session,
+        route_id,
+        since=now - timedelta(days=FRAICHEUR_RELEVE_J),
+        # Une de plus que le nombre affiché, pour que le retrait de la date déjà montrée
+        # ne réduise pas la liste.
+        limit=ALTERNATIVES_DIGEST + 1,
+    )
+    deja_montree = observation.departure_date if observation else None
+
+    return tuple(
+        DateAlternative(
+            depart_date=candidate.departure_date,
+            price_cad=candidate.price_cad,
+            provider=candidate.provider,
+            ecart_cad=candidate.price_cad - prix_mis_en_avant,
+        )
+        for candidate in candidates
+        if candidate.departure_date != deja_montree
+    )[:ALTERNATIVES_DIGEST]
 
 
 def build_digest(session: Session, settings: Settings, now: datetime) -> DigestData:

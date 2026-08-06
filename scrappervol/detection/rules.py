@@ -9,6 +9,10 @@ SEUIL_Z_MODIFIE = -3.5
 # Au-delà de ce silence, une source est considérée hors service et signalée en tête du digest.
 SEUIL_SOURCE_MUETTE_H = 48
 
+# Au-delà de cet âge, un relevé ne dit plus ce que coûte un billet : il dit ce qu'il coûtait.
+# Partagé par les deux canaux, qui doivent s'accorder sur ce qu'ils appellent un prix actuel.
+FRAICHEUR_RELEVE_J = 7
+
 
 @dataclass(frozen=True, slots=True)
 class PriceContext:

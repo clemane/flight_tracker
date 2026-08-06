@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from scrappervol.config import Settings
 from scrappervol.core.types import DatePolicyKind, FlightOffer
+from scrappervol.notify.render import render_digest
 from scrappervol.scheduler.jobs import build_digest, purge_old_data, send_digest
 from scrappervol.storage import repo
 from scrappervol.storage.models import (
@@ -423,3 +424,160 @@ def test_un_digest_remis_marque_le_canal_comme_sain(session, reglages, faux_mail
     assert sante is not None
     assert sante.last_success_at == MAINTENANT
     assert sante.consecutive_failures == 0
+
+
+class TestDatesAlternatives:
+    """Le digest met un prix en avant ; les autres dates relevées ne doivent pas disparaître.
+
+    Sur un horizon de douze mois, décaler le départ d'une semaine change parfois le total de
+    plus que l'écart qui déclencherait une alerte. Un courriel qui tait ces dates cache la
+    moitié de ce que le balayage a coûté à collecter.
+    """
+
+    def _offre_datee(self, prix: int, depart: date, **surcharges) -> FlightOffer:
+        base = {
+            "provider": "kayak",
+            "origin": "YUL",
+            "destination": "CDG",
+            "depart_date": depart,
+            "return_date": depart + timedelta(days=10),
+            "price_cad": prix,
+            "price_original": float(prix),
+            "currency_original": "CAD",
+            "airline": "Air Transat",
+            "stops": 0,
+            "duration_minutes": 425,
+            "deep_link": "https://example.com",
+            "raw": {},
+        }
+        return FlightOffer(**{**base, **surcharges})
+
+    def _trajet_avec_releves(self, session, prix_du_jour: int, autres: list[tuple[int, date]]):
+        """Un trajet dont le plus bas du jour est `prix_du_jour`, plus d'autres dates relevées."""
+        trajet = _trajet(session)
+        mise_en_avant = repo.record_observations(
+            session, trajet.id, [self._offre_datee(prix_du_jour, date(2027, 3, 12))], MAINTENANT
+        )[0]
+        repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, mise_en_avant)
+        for prix, depart in autres:
+            repo.record_observations(
+                session, trajet.id, [self._offre_datee(prix, depart)], MAINTENANT
+            )
+        session.commit()
+        return trajet
+
+    def test_le_bloc_porte_les_autres_dates_relevees(self, session, reglages):
+        self._trajet_avec_releves(
+            session, 700, [(520, date(2027, 4, 9)), (610, date(2027, 5, 14))]
+        )
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert [(a.depart_date, a.price_cad) for a in bloc.autres_dates] == [
+            (date(2027, 4, 9), 520),
+            (date(2027, 5, 14), 610),
+        ]
+
+    def test_la_date_deja_mise_en_avant_nest_pas_repetee(self, session, reglages):
+        """La répéter occuperait une ligne pour ne rien apprendre."""
+        self._trajet_avec_releves(session, 700, [(520, date(2027, 4, 9))])
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert date(2027, 3, 12) not in [a.depart_date for a in bloc.autres_dates]
+        assert bloc.depart_date == date(2027, 3, 12)
+
+    def test_lecart_se_compte_depuis_le_prix_mis_en_avant(self, session, reglages):
+        self._trajet_avec_releves(
+            session, 700, [(520, date(2027, 4, 9)), (880, date(2027, 5, 14))]
+        )
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        ecarts = {a.depart_date: a.ecart_cad for a in bloc.autres_dates}
+        assert ecarts[date(2027, 4, 9)] == -180
+        assert ecarts[date(2027, 5, 14)] == 180
+
+    def test_le_nombre_dalternatives_est_borne(self, session, reglages):
+        self._trajet_avec_releves(
+            session, 700, [(500 + i, date(2027, 4, 1) + timedelta(days=i)) for i in range(10)]
+        )
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert len(bloc.autres_dates) == 3
+
+    def test_la_borne_tient_meme_quand_la_date_montree_est_la_moins_chere(
+        self, session, reglages
+    ):
+        """Retirer la date déjà montrée ne doit pas amputer la liste d'une ligne."""
+        self._trajet_avec_releves(
+            session, 100, [(500 + i, date(2027, 4, 1) + timedelta(days=i)) for i in range(10)]
+        )
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert len(bloc.autres_dates) == 3
+
+    def test_un_releve_perime_ne_figure_pas_parmi_les_alternatives(self, session, reglages):
+        trajet = _trajet(session)
+        mise_en_avant = repo.record_observations(
+            session, trajet.id, [self._offre_datee(700, date(2027, 3, 12))], MAINTENANT
+        )[0]
+        repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, mise_en_avant)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [self._offre_datee(200, date(2027, 4, 9))],
+            MAINTENANT - timedelta(days=30),
+        )
+        session.commit()
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert bloc.autres_dates == ()
+
+    def test_sans_plus_bas_du_jour_aucune_alternative_nest_avancee(self, session, reglages):
+        """Un trajet muet aujourd'hui n'a pas de prix de référence : l'écart serait sans objet."""
+        trajet = _trajet(session)
+        repo.record_observations(
+            session, trajet.id, [self._offre_datee(520, date(2027, 4, 9))], MAINTENANT
+        )
+        session.commit()
+
+        bloc = build_digest(session, reglages, MAINTENANT).blocks[0]
+
+        assert bloc.price_cad is None
+        assert bloc.autres_dates == ()
+
+    def test_le_courriel_texte_affiche_les_autres_dates(self, session, reglages):
+        self._trajet_avec_releves(session, 700, [(520, date(2027, 4, 9))])
+
+        courriel = render_digest(build_digest(session, reglages, MAINTENANT))
+
+        assert "Autres dates relevées" in courriel.text
+        assert "2027-04-09" in courriel.text
+        assert "520 $" in courriel.text
+        assert "-180 $" in courriel.text
+
+    def test_le_courriel_html_affiche_les_autres_dates(self, session, reglages):
+        self._trajet_avec_releves(session, 700, [(880, date(2027, 5, 14))])
+
+        courriel = render_digest(build_digest(session, reglages, MAINTENANT))
+
+        assert "Autres dates relevées" in courriel.html
+        assert "2027-05-14" in courriel.html
+        assert "+180 $" in courriel.html
+
+    def test_sans_alternative_le_courriel_ne_montre_pas_la_rubrique(self, session, reglages):
+        trajet = _trajet(session)
+        observation = repo.record_observations(
+            session, trajet.id, [self._offre_datee(700, date(2027, 3, 12))], MAINTENANT
+        )[0]
+        repo.upsert_daily_low(session, trajet.id, AUJOURDHUI, observation)
+        session.commit()
+
+        courriel = render_digest(build_digest(session, reglages, MAINTENANT))
+
+        assert "Autres dates relevées" not in courriel.text
+        assert "Autres dates relevées" not in courriel.html

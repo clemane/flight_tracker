@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from scrappervol.core.airports import chercher
 from scrappervol.core.types import DatePolicyKind, TripType
 from scrappervol.detection.rules import (
+    FRAICHEUR_RELEVE_J,
     SEUIL_SOURCE_MUETTE_H,
     PriceContext,
     is_find,
@@ -26,9 +27,6 @@ from scrappervol.web.forms import RouteFormError, validate_route_form, validate_
 
 router = APIRouter()
 
-
-# Au-delà d'une semaine, un relevé ne dit plus ce que coûte un billet aujourd'hui.
-FRAICHEUR_DATES_J = 7
 
 # Assez de dates pour voir la forme de l'année sans noyer la page.
 DATES_AFFICHEES = 12
@@ -223,7 +221,7 @@ def dates_du_trajet(
     observations = repo.best_by_departure_date(
         session,
         route_id,
-        since=maintenant - timedelta(days=FRAICHEUR_DATES_J),
+        since=maintenant - timedelta(days=FRAICHEUR_RELEVE_J),
         limit=DATES_AFFICHEES,
     )
 
@@ -254,7 +252,7 @@ def dates_du_trajet(
     return templates.TemplateResponse(
         request,
         "_dates.html.j2",
-        {"trajet": trajet, "lignes": lignes, "fraicheur_j": FRAICHEUR_DATES_J},
+        {"trajet": trajet, "lignes": lignes, "fraicheur_j": FRAICHEUR_RELEVE_J},
     )
 
 

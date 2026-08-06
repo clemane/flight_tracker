@@ -14,6 +14,11 @@ Aucun trajet actif.
 {% else %}  {{ (bloc.gap_vs_median | abs * 100) | round | int }} % {{ 'sous' if bloc.gap_vs_median >= 0 else 'au-dessus de' }} la médiane de 90 jours ({{ bloc.median_price | round | int }} $){% if bloc.gap_vs_yesterday is not none %} · {{ bloc.gap_vs_yesterday }} $ vs hier{% endif %}
 
 {% endif %}  {{ bloc.deep_link }}
+{% if bloc.autres_dates %}
+  Autres dates relevées :
+{% for autre in bloc.autres_dates %}    {{ autre.depart_date }} — {{ autre.price_cad }} $ ({{ '+' if autre.ecart_cad > 0 else '' }}{{ autre.ecart_cad }} $) · {{ autre.provider }}
+{% endfor %}
+{% endif %}
 {% endif %}
 {% endfor %}
 

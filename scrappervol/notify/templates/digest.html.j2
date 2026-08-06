@@ -48,6 +48,22 @@
       </p>
     {% endif %}
     <p style="margin:8px 0;"><a href="{{ bloc.deep_link }}">Voir l'offre</a></p>
+    {% if bloc.autres_dates %}
+      {# Styles en ligne : les clients de messagerie ignorent les feuilles externes. #}
+      <p style="margin:12px 0 4px;color:#555;font-size:13px;">Autres dates relevées</p>
+      <table style="border-collapse:collapse;font-size:13px;color:#555;">
+        {% for autre in bloc.autres_dates %}
+          <tr>
+            <td style="padding:2px 12px 2px 0;">{{ autre.depart_date }}</td>
+            <td style="padding:2px 12px 2px 0;"><strong>{{ autre.price_cad }} $</strong></td>
+            <td style="padding:2px 12px 2px 0;color:{{ '#0f7a4a' if autre.ecart_cad < 0 else '#888' }};">
+              {{ '+' if autre.ecart_cad > 0 else '' }}{{ autre.ecart_cad }} $
+            </td>
+            <td style="padding:2px 0;color:#888;">{{ autre.provider }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% endif %}
   {% endif %}
 </div>
 {% endfor %}

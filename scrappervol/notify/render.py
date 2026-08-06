@@ -53,6 +53,17 @@ def format_trajet(stops: int, duration_minutes: int | None) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class DateAlternative:
+    """Une autre date de départ, moins chère ou presque, que le prix du jour ne montre pas."""
+
+    depart_date: date
+    price_cad: int
+    provider: str
+    ecart_cad: int
+    """Différence avec le prix mis en avant. Négatif quand cette date coûte moins cher."""
+
+
+@dataclass(frozen=True, slots=True)
 class RouteBlock:
     label: str
     price_cad: int | None
@@ -68,6 +79,10 @@ class RouteBlock:
     gap_vs_yesterday: int | None
     is_find: bool
     history_building: bool
+    # Le digest met un prix en avant, celui du jour. Sur un horizon de douze mois, décaler le
+    # départ d'une semaine change parfois davantage le total que l'écart qui déclenche une
+    # alerte : taire les autres dates reviendrait à cacher la moitié de ce qu'on a relevé.
+    autres_dates: tuple[DateAlternative, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
