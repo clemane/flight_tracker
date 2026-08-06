@@ -20,6 +20,36 @@ def _fenetre_du_mois(annee: int, mois: int) -> tuple[date, date]:
     return date(annee, mois, 1), date(annee, mois, dernier)
 
 
+# Un jalon par semaine dans le mois, plutôt qu'un seul.
+#
+# Les sources qui savent élargir autour d'une date le font de trois jours de part et d'autre,
+# soit sept journées par jalon (voir `amplitude_flexible` dans providers/kayak.py) : des jalons
+# espacés d'une semaine couvrent alors le mois sans trou. Pour les autres sources, qui
+# interrogent la date telle quelle, c'est simplement quatre sondages au lieu d'un.
+#
+# Cela allonge le plan sans alourdir un passage : `max_queries` le tronque comme avant, et la
+# rotation fait défiler la fenêtre d'un passage à l'autre. Ce qui change est la couverture dans
+# le temps, pas la charge d'un seul relevé — un tarif d'erreur n'existant que certains jours,
+# n'interroger que le 15 revenait à ne jamais en croiser.
+_PAS_JALONS_J = 7
+_PREMIER_JALON = 4
+
+
+def _jalons_du_mois(annee: int, mois: int) -> list[date]:
+    """Jours de départ à sonder dans un mois, du premier au dernier, espacés d'une semaine."""
+    dernier = calendar.monthrange(annee, mois)[1]
+    jalons = [
+        date(annee, mois, jour)
+        for jour in range(_PREMIER_JALON, dernier + 1, _PAS_JALONS_J)
+    ]
+    # La queue du mois resterait sinon hors de portée : dans un mois de 31 jours, le dernier
+    # jalon tombe le 25 et son battement s'arrête au 28.
+    marge = _PAS_JALONS_J // 2
+    if jalons and dernier - jalons[-1].day > marge:
+        jalons.append(date(annee, mois, dernier - marge))
+    return jalons
+
+
 def _decale_mois(reference: date, decalage: int) -> tuple[int, int]:
     total = reference.month - 1 + decalage
     return reference.year + total // 12, total % 12 + 1
@@ -55,9 +85,9 @@ def _dates_window(
     resultat = []
     for mois_iso in params.get("mois", []):
         annee, mois = (int(part) for part in mois_iso.split("-"))
-        depart = date(annee, mois, 15)
-        retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
-        resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
+        for depart in _jalons_du_mois(annee, mois):
+            retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
+            resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
     return resultat
 
 
@@ -75,9 +105,9 @@ def _dates_flexible(
         if index_mois > horizon:
             break
         annee, mois = _decale_mois(today, index_mois)
-        depart = date(annee, mois, 15)
-        retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
-        resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
+        for depart in _jalons_du_mois(annee, mois):
+            retour = depart + timedelta(days=sejour) if trip_type is TripType.ROUND_TRIP else None
+            resultat.append((depart, retour, _fenetre_du_mois(annee, mois)))
     return resultat
 
 

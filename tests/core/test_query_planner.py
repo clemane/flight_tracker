@@ -60,16 +60,28 @@ def test_produit_cartesien_des_origines_et_destinations():
     assert couples == {("YUL", "CDG"), ("YUL", "ORY"), ("YQB", "CDG"), ("YQB", "ORY")}
 
 
-def test_window_produit_une_requete_par_mois_declare():
+def test_window_sonde_chaque_mois_declare_semaine_par_semaine():
+    """Un jalon par semaine, et non un seul par mois.
+
+    Un tarif d'erreur n'existe que certains jours : ne sonder que le 15 revenait à ne
+    pratiquement jamais en croiser. Les jalons sont espacés d'une semaine, ce qui correspond à
+    ce qu'un battement de trois jours couvre autour de chacun.
+    """
     politique = _politique(
         date_policy=DatePolicyKind.WINDOW,
         policy_params={"mois": ["2027-03", "2027-04"], "sejour_min": 8, "sejour_max": 12},
     )
 
-    requetes = plan_queries(politique, today=AUJOURDHUI, max_queries=10)
+    requetes = plan_queries(politique, today=AUJOURDHUI, max_queries=50)
 
-    assert len(requetes) == 2
     assert {q.depart_date.month for q in requetes} == {3, 4}
+
+    jours_de_mars = sorted(q.depart_date.day for q in requetes if q.depart_date.month == 3)
+    assert jours_de_mars == [4, 11, 18, 25, 28]
+
+    # Aucun trou : chaque jour du mois est à moins de trois jours d'un jalon.
+    for jour in range(1, 32):
+        assert any(abs(jour - jalon) <= 3 for jalon in jours_de_mars)
 
 
 def test_window_centre_le_depart_et_deduit_le_retour_du_sejour_moyen():
@@ -80,8 +92,8 @@ def test_window_centre_le_depart_et_deduit_le_retour_du_sejour_moyen():
 
     q = plan_queries(politique, today=AUJOURDHUI)[0]
 
-    assert q.depart_date == date(2027, 3, 15)
-    assert q.return_date == date(2027, 3, 25)
+    assert q.depart_date == date(2027, 3, 4)
+    assert q.return_date == date(2027, 3, 14)
     assert q.calendar_window == (date(2027, 3, 1), date(2027, 3, 31))
 
 
@@ -167,6 +179,12 @@ def test_flexible_avec_troncature_finit_par_couvrir_tout_lhorizon():
     """Non-régression : la troncature ne doit pas se figer sur la même moitié du plan à
     l'intérieur d'une tranche flexible, même quand `rotation` change mais reste dans la
     même tranche de deux mois.
+
+    Soixante passages, contre vingt-quatre lorsqu'un seul jalon était sondé par mois : sonder le
+    mois semaine par semaine allonge d'autant le cycle, à plafond de requêtes inchangé. Le
+    compromis est assumé — une aubaine tombant le 8 novembre n'était auparavant jamais vue,
+    puisque seul le 15 était interrogé. `max_queries_per_route` reste le réglage qui arbitre
+    entre la longueur du cycle et la charge d'un seul passage.
     """
     politique = _politique(
         origins=["YUL", "YQB"],
@@ -176,7 +194,7 @@ def test_flexible_avec_troncature_finit_par_couvrir_tout_lhorizon():
     )
 
     couverts = set()
-    for rotation in range(24):
+    for rotation in range(60):
         for q in plan_queries(politique, today=AUJOURDHUI, rotation=rotation, max_queries=6):
             couverts.add((q.origin, q.destination, (q.depart_date.year, q.depart_date.month)))
 

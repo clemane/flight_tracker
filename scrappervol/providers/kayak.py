@@ -84,16 +84,20 @@ def amplitude_flexible(query: SearchQuery) -> int:
     744 $ à date fixe.
 
     Le battement est symétrique parce que le site ne sait pas en demander d'autre, et borné par
-    la marge la plus courte des deux dates : la fenêtre du trajet fait autorité, on n'en sort
-    pas pour gagner un jour.
+    la marge la plus courte de part et d'autre du **départ** : la fenêtre du trajet fait
+    autorité, on n'en sort pas pour gagner un jour.
+
+    La fenêtre ne concerne que le départ, et pas le retour, parce que c'est ainsi que le
+    planificateur la construit : `flex_days: 3` autour d'un départ le 12 mars produit
+    (9 mars, 15 mars) pour un voyage dont le retour tombe le 22. La borner sur le retour
+    n'écarterait pas quelques cas limites — elle rejetterait toutes les offres de ce trajet.
     """
     if query.calendar_window is None:
         return 0
     debut, fin = query.calendar_window
-    marges = [(query.depart_date - debut).days, (fin - query.depart_date).days]
-    if query.return_date is not None:
-        marges += [(query.return_date - debut).days, (fin - query.return_date).days]
-    return max(0, min(_FLEX_JOURS_MAX, *marges))
+    marge_avant = (query.depart_date - debut).days
+    marge_apres = (fin - query.depart_date).days
+    return max(0, min(_FLEX_JOURS_MAX, marge_avant, marge_apres))
 
 
 def _date_flexible(jour: date, battement: int) -> str:
@@ -143,7 +147,12 @@ def _jour_de_jambe(resultat: dict, jambes: dict, rang: int) -> date | None:
 
 
 def _dans_la_fenetre(jour: date, query: SearchQuery) -> bool:
-    """Le site peut déborder de ce qu'on lui a demandé ; la fenêtre du trajet fait foi."""
+    """Le site peut déborder de ce qu'on lui a demandé ; la fenêtre du trajet fait foi.
+
+    Ne s'applique qu'à la date de départ : le planificateur ne borne qu'elle, et le retour se
+    déduit de la durée du séjour, souvent au-delà de la fenêtre (un départ le 25 pour dix jours
+    revient le mois suivant).
+    """
     if query.calendar_window is None:
         return True
     debut, fin = query.calendar_window
@@ -282,8 +291,6 @@ def parse_poll(donnees: dict, query: SearchQuery) -> list[FlightOffer]:
         retour_reel = query.return_date
         if query.return_date is not None:
             retour_reel = _jour_de_jambe(resultat, jambes, 1) or query.return_date
-            if not _dans_la_fenetre(retour_reel, query):
-                continue
 
         offres.append(
             FlightOffer(

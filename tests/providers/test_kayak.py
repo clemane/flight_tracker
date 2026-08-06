@@ -496,13 +496,29 @@ class TestAmplitudeFlexible:
         assert amplitude_flexible(REQUETE_REELLE) == 0
 
     def test_une_fenetre_large_donne_le_battement_maximal(self):
-        # Départ le 15, retour le 22, fenêtre du mois entier : trois jours de marge de tous
-        # les côtés, donc le battement maximal que le site honore.
+        # Départ le 15, fenêtre du mois entier : plus de trois jours de marge de part et
+        # d'autre, donc le battement maximal que le site honore.
         requete = dataclasses.replace(
             REQUETE_REELLE,
             depart_date=date(2026, 11, 15),
             return_date=date(2026, 11, 22),
             calendar_window=(date(2026, 11, 1), date(2026, 11, 30)),
+        )
+        assert amplitude_flexible(requete) == 3
+
+    def test_la_fenetre_ne_borne_que_le_depart(self):
+        """Le retour n'entre pas dans le calcul, et c'est voulu.
+
+        Le planificateur ne borne que le départ : `flex_days: 3` autour d'un départ le 12 mars
+        produit (9 mars, 15 mars) pour un voyage qui revient le 22. Compter le retour dans les
+        marges ramènerait le battement à zéro sur tous les séjours un peu longs — exactement les
+        trajets où le balayage sert le plus.
+        """
+        requete = dataclasses.replace(
+            REQUETE_REELLE,
+            depart_date=date(2027, 3, 12),
+            return_date=date(2027, 3, 22),
+            calendar_window=(date(2027, 3, 9), date(2027, 3, 15)),
         )
         assert amplitude_flexible(requete) == 3
 
@@ -530,27 +546,16 @@ class TestAmplitudeFlexible:
         assert amplitude_flexible(requete) == 1
 
     def test_le_battement_est_borne_par_le_bord_droit(self):
-        # Retour le 10, fenêtre close le 12 : deux jours de marge après.
+        # Départ le 3, fenêtre close le 5 : deux jours de marge après.
         requete = dataclasses.replace(
-            REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 12))
+            REQUETE_REELLE, calendar_window=(date(2026, 10, 1), date(2026, 11, 5))
         )
         assert amplitude_flexible(requete) == 2
 
-    def test_la_date_de_retour_borne_aussi(self):
-        """Le retour compte autant que l'aller.
-
-        Ne bornant que sur l'aller, un battement de trois jours autour d'un retour situé en fin
-        de fenêtre déborderait sur le mois suivant — hors de ce que la politique du trajet
-        autorise.
-        """
-        requete = dataclasses.replace(
-            REQUETE_REELLE, calendar_window=(date(2026, 10, 1), date(2026, 11, 11))
-        )
-        assert amplitude_flexible(requete) == 1
-
     def test_une_fenetre_degeneree_ne_donne_aucun_battement(self):
+        # Fenêtre réduite au seul jour du départ : rien à élargir.
         requete = dataclasses.replace(
-            REQUETE_REELLE, calendar_window=(date(2026, 11, 3), date(2026, 11, 10))
+            REQUETE_REELLE, calendar_window=(date(2026, 11, 3), date(2026, 11, 3))
         )
         assert amplitude_flexible(requete) == 0
 
@@ -690,12 +695,18 @@ class TestDatesReelles:
 
         assert parse_poll(donnees, requete) == []
 
-    def test_un_retour_hors_fenetre_est_ecarte(self):
+    def test_un_retour_apres_la_fenetre_est_conservé(self):
+        """La fenêtre borne le départ, jamais le retour.
+
+        Un départ le 28 novembre pour une semaine revient en décembre : c'est le cas normal
+        d'un séjour à cheval sur deux mois, pas un débordement. L'écarter reviendrait à
+        n'accepter que les voyages commencés en début de fenêtre.
+        """
         donnees = {
             "results": [
                 {
                     "type": "core",
-                    "resultId": "retour-hors-fenetre",
+                    "resultId": "sejour-a-cheval",
                     "legs": [{"id": "aller", "segments": [{"id": "s1"}]},
                              {"id": "retour", "segments": [{"id": "s2"}]}],
                     "bookingOptions": [
@@ -712,7 +723,10 @@ class TestDatesReelles:
             REQUETE_REELLE, calendar_window=(date(2026, 11, 1), date(2026, 11, 30))
         )
 
-        assert parse_poll(donnees, requete) == []
+        (offre,) = parse_poll(donnees, requete)
+
+        assert offre.depart_date == date(2026, 11, 28)
+        assert offre.return_date == date(2026, 12, 5)
 
 
 class TestBornesDeFenetre:
