@@ -1,0 +1,1689 @@
+{
+ "searchId": "0WCiDhWKSi",
+ "status": "complete",
+ "priceMode": "per-person",
+ "sortMode": "price_a",
+ "totalCount": 1664,
+ "filteredCount": 344,
+ "results": [
+  {
+   "resultId": "inline-1-1",
+   "type": "inlineAd",
+   "site": "Visit Copenhagen",
+   "clickUrl": {
+    "url": "/s/clickthrough.jsp?ctyp=iob&ptyp=F&orig=F..RP..M1&plid=5294123&cpnid=7112422&prv=WonderfulCopenhagen2_FIOAD_en_CA&srch=0WCiDhWKSi&ploc=en_CA&displayRail=Rslt&rank=1&atype=inl&prc=&pgrp=0&xpExt=&aidExt=&lid=WonderfulCopenhagen2_FIOAD_en_CA-0WCiDhWKSi-T03jRAPhYk1wK22UanHC&qorig=Airport:YUL&qdest=Airport:PAR&qstart=1793682000000&qend=1794286800000&qow=0&qdctid=36014&qdac=PAR&qshour=-1&qehour=-1&resid=&bookid=&seekProv=&qadults=1&qchild=0&qns=0&qnearby=0&qnearbyo=0&qnearbyd=0&qcages=&qinfantseat=0&qinfantlap=0&qsenior=0&qyouths=0&qfcc=e&qtravelers=1&qstudents=0&pgNum=1&copyId=0&iar=1&stid=1341677098&ah=R$3UT_0rd7J1CzmOCEKkLKXr8SlQLHf3NWZ0vrpL0fs&pj=IMSDyBev7sr75AkUbW3nag%3D%3D&_sid_=R-4kccXFGvcFUOeJThjUo_z-U9hklSvC3wSO42k_c4Jo8WrfJgynFjMOEhBnaCl2_&btype=DgqbZHoRrmSpOXmNAG7plg%3D%3D&bkey=xS9FGZJX5U_ZVoJpxwDR8%24wlCLEVUld0&abv=Q0X%24lx%240Lrk%3D&bacO=6xkP199O4%24s%3D&bacD=2V7yLdI49EI%3D&pm=o36kuTFoJWo%3D&pn=qs0SRVmDjgE%3D&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=0&adContentId=8364453437c4fa6287f7da5669ede388",
+    "urlType": "relative"
+   },
+   "logoUrl": {
+    "url": "/picasso/svg?url=/kimg/a/suppliers/7005328/vector-logos/87c330a7dcd10246.svg&padX=5&padY=5",
+    "urlType": "relative"
+   },
+   "headline": "Fly direct from Halifax to Copenhagen",
+   "description": "Skip the extra stop and head straight from Halifax to Denmark’s capital this summer.",
+   "buttonText": "Discover",
+   "providerCode": "WonderfulCopenhagen2_FIOAD_en_CA",
+   "providerName": "Visit Copenhagen",
+   "seekerProvider": "",
+   "phoneNumber": "",
+   "images": [
+    {
+     "description": "Feel the royal beauty of gardens",
+     "pathUrl": {
+      "url": "/rimg/kimg/a/suppliers/7005328/540fb9b0e308e603.png",
+      "urlType": "relative"
+     }
+    },
+    {
+     "description": "Step into cultural spaces",
+     "pathUrl": {
+      "url": "/rimg/kimg/a/suppliers/7005328/4ce248dc97d09063.png",
+      "urlType": "relative"
+     }
+    },
+    {
+     "description": "Enjoy summertime on terraces",
+     "pathUrl": {
+      "url": "/rimg/kimg/a/suppliers/7005328/82fb21ad38512768.png",
+      "urlType": "relative"
+     }
+    }
+   ],
+   "isSds": true,
+   "showPerPersonLabel": false,
+   "companyName": "Wonderful Copenhagen",
+   "adType": "snacker",
+   "index": 1,
+   "isSpecialOpaque": false,
+   "showPaymentMessage": false,
+   "isCircleRatings": false,
+   "viewRank": 0,
+   "adContentId": "8364453437c4fa6287f7da5669ede388",
+   "adPlacementCode": "5294123"
+  },
+  {
+   "resultId": "51e066160fc13ff22b7822a69b7326da",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.18wgSzIaLAlgpzrTH2pViLaYAeeTFjgE.53475.51e066160fc13ff22b7822a69b7326da&h=cf377982f780&sub=F-4956249470028797548E07e16daa773&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=11",
+      "urlType": "relative"
+     },
+     "bookingId": "F-4956249470028797548E07e16daa773",
+     "providerCode": "AIRTICKETS24DOTCOM",
+     "displayPrice": {
+      "price": 751,
+      "currency": "CAD",
+      "localizedPrice": "C$ 751"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000SN96341",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000SN963416250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794319200000AC8711",
+       "approxDepartureTime": "2:00 p.m.",
+       "approxArrivalTime": "3:40 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794319200000AC87109001040",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 751,
+       "currency": "CAD",
+       "localizedPrice": "C$ 751"
+      },
+      "totalPrice": {
+       "price": 751,
+       "currency": "CAD",
+       "localizedPrice": "C$ 751"
+      },
+      "rawPrice": {
+       "price": 751,
+       "currency": "CAD",
+       "localizedPrice": "C$ 751"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 374,
+        "currency": "CAD",
+        "localizedPrice": "C$ 374"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not included<br>(+C$ 374)",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 203cm total"
+        ],
+        "prefix": "Brussels Airlines"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "SN": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 203cm total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.B804y7I_OvzTYwQ_VUUUMA.53988.51e066160fc13ff22b7822a69b7326da&h=f40f509c2bcd&sub=F-3897498131985485415E0d64c534825&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=11",
+      "urlType": "relative"
+     },
+     "bookingId": "F-3897498131985485415E0d64c534825",
+     "providerCode": "CHEAPOAIR",
+     "displayPrice": {
+      "price": 759,
+      "currency": "CAD",
+      "localizedPrice": "C$ 759"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000SN96341",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000SN963416250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794319200000AC8711",
+       "approxDepartureTime": "2:00 p.m.",
+       "approxArrivalTime": "3:40 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794319200000AC87109001040",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "totalPrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "rawPrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 23 lb per bag",
+         "Up to 203cm total"
+        ],
+        "prefix": "Brussels Airlines"
+       },
+       {
+        "disclosures": [
+         "Up to 23 lb per bag",
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "WEIGHT": "Up to 23 lb per bag"
+        }
+       }
+      ],
+      "SN": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "WEIGHT": "Up to 23 lb per bag"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.ZpbE3-UY8hoNUvH8T-y68A.53995.51e066160fc13ff22b7822a69b7326da&h=6b30283957b7&sub=F-7823733993867851054E04bc6c62d04&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=11",
+      "urlType": "relative"
+     },
+     "bookingId": "F-7823733993867851054E04bc6c62d04",
+     "providerCode": "EXPEDIAAIR",
+     "displayPrice": {
+      "price": 759,
+      "currency": "CAD",
+      "localizedPrice": "C$ 759"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000SN96341",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000SN963416250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794319200000AC8711",
+       "approxDepartureTime": "2:00 p.m.",
+       "approxArrivalTime": "3:40 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794319200000AC87109001040",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "totalPrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "rawPrice": {
+       "price": 759,
+       "currency": "CAD",
+       "localizedPrice": "C$ 759"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 203cm total"
+        ],
+        "prefix": "Brussels Airlines"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "SN": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 203cm total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "isBest": false,
+   "isCheapest": false,
+   "isCheapestDirect": true,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "51e066160fc13ff22b7822a69b7326da",
+   "shareableId": "51e066160fc13ff22b7822a69b7326da",
+   "shareableUrl": "/flights/YUL-PAR/2026-11-03/2026-11-10/f51e066160fc13ff22b7822a69b7326da?viewRank=11",
+   "legs": [
+    {
+     "id": "YULCDG1793739600000SN96341",
+     "segments": [
+      {
+       "id": "1793739600000SN963416250525"
+      }
+     ]
+    },
+    {
+     "id": "CDGYUL1794319200000AC8711",
+     "segments": [
+      {
+       "id": "1794319200000AC87109001040"
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 19,
+   "totalDistinctFares": 6,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 11,
+   "totalProviders": 9
+  },
+  {
+   "resultId": "c57c7e3d7a7bb68dc7f052835ffd1c96",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.18wgSzIaLAlgpzrTH2pViLaYAeeTFjgE.52976.c57c7e3d7a7bb68dc7f052835ffd1c96&h=fb9b05014130&sub=F-4956249469667885542E0988c45159b&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=1",
+      "urlType": "relative"
+     },
+     "bookingId": "F-4956249469667885542E0988c45159b",
+     "providerCode": "AIRTICKETS24DOTCOM",
+     "displayPrice": {
+      "price": 744,
+      "currency": "CAD",
+      "localizedPrice": "C$ 744"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000AC8701",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000AC87016250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 744,
+       "currency": "CAD",
+       "localizedPrice": "C$ 744"
+      },
+      "totalPrice": {
+       "price": 744,
+       "currency": "CAD",
+       "localizedPrice": "C$ 744"
+      },
+      "rawPrice": {
+       "price": 744,
+       "currency": "CAD",
+       "localizedPrice": "C$ 744"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 374,
+        "currency": "CAD",
+        "localizedPrice": "C$ 374"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not included<br>(+C$ 374)",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.hVPlmUai5GwDzQq2dWkU9A.53617.c57c7e3d7a7bb68dc7f052835ffd1c96&h=ab97d09dcb7a&sub=F5760495861222328928E0d794b9d60d&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=1",
+      "urlType": "relative"
+     },
+     "bookingId": "F5760495861222328928E0d794b9d60d",
+     "providerCode": "GOTOGATE",
+     "displayPrice": {
+      "price": 753,
+      "currency": "CAD",
+      "localizedPrice": "C$ 753"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000AC8701",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000AC87016250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 753,
+       "currency": "CAD",
+       "localizedPrice": "C$ 753"
+      },
+      "totalPrice": {
+       "price": 753,
+       "currency": "CAD",
+       "localizedPrice": "C$ 753"
+      },
+      "rawPrice": {
+       "price": 753,
+       "currency": "CAD",
+       "localizedPrice": "C$ 753"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 374,
+        "currency": "CAD",
+        "localizedPrice": "C$ 374"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not included<br>(+C$ 374)",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.HceeID8kIYIMlOqRgOKZ7A.53644.c57c7e3d7a7bb68dc7f052835ffd1c96&h=2c0925ac321f&sub=F2074950872261107201E010af1e5f80&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=1",
+      "urlType": "relative"
+     },
+     "bookingId": "F2074950872261107201E010af1e5f80",
+     "providerCode": "BOOKINGFLIGHTS",
+     "displayPrice": {
+      "price": 754,
+      "currency": "CAD",
+      "localizedPrice": "C$ 754"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793739600000AC8701",
+       "approxDepartureTime": "9:25 p.m.",
+       "approxArrivalTime": "10:25 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793739600000AC87016250525",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 754,
+       "currency": "CAD",
+       "localizedPrice": "C$ 754"
+      },
+      "totalPrice": {
+       "price": 754,
+       "currency": "CAD",
+       "localizedPrice": "C$ 754"
+      },
+      "rawPrice": {
+       "price": 754,
+       "currency": "CAD",
+       "localizedPrice": "C$ 754"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "isBest": true,
+   "isCheapest": true,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "c57c7e3d7a7bb68dc7f052835ffd1c96",
+   "shareableId": "c57c7e3d7a7bb68dc7f052835ffd1c96",
+   "shareableUrl": "/flights/YUL-PAR/2026-11-03/2026-11-10/fc57c7e3d7a7bb68dc7f052835ffd1c96?viewRank=1",
+   "legs": [
+    {
+     "id": "YULCDG1793739600000AC8701",
+     "segments": [
+      {
+       "id": "1793739600000AC87016250525"
+      }
+     ]
+    },
+    {
+     "id": "CDGYUL1794301200000LX6331794312000000LX862",
+     "segments": [
+      {
+       "id": "1794301200000LX63304550620"
+      },
+      {
+       "id": "1794312000000LX8607401010"
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 11,
+   "totalDistinctFares": 3,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 1,
+   "totalProviders": 9
+  },
+  {
+   "resultId": "485f094c36e4f0d3b0a7a844282552c8",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.18wgSzIaLAlgpzrTH2pViLaYAeeTFjgE.53190.485f094c36e4f0d3b0a7a844282552c8&h=adf33865d897&sub=F-4956249470096746972E0fd74e6d0fd&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=5",
+      "urlType": "relative"
+     },
+     "bookingId": "F-4956249470096746972E0fd74e6d0fd",
+     "providerCode": "AIRTICKETS24DOTCOM",
+     "displayPrice": {
+      "price": 747,
+      "currency": "CAD",
+      "localizedPrice": "C$ 747"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793725200000AC8951793739600000AC8722",
+       "approxDepartureTime": "5:10 p.m.",
+       "approxArrivalTime": "10:20 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793725200000AC89512101355",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1793739600000AC87216100520",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 747,
+       "currency": "CAD",
+       "localizedPrice": "C$ 747"
+      },
+      "totalPrice": {
+       "price": 747,
+       "currency": "CAD",
+       "localizedPrice": "C$ 747"
+      },
+      "rawPrice": {
+       "price": 747,
+       "currency": "CAD",
+       "localizedPrice": "C$ 747"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 374,
+        "currency": "CAD",
+        "localizedPrice": "C$ 374"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not included<br>(+C$ 374)",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.hVPlmUai5GwDzQq2dWkU9A.54116.485f094c36e4f0d3b0a7a844282552c8&h=98a17dd20fde&sub=F5760495862445366085E0323c45018f&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=5",
+      "urlType": "relative"
+     },
+     "bookingId": "F5760495862445366085E0323c45018f",
+     "providerCode": "GOTOGATE",
+     "displayPrice": {
+      "price": 760,
+      "currency": "CAD",
+      "localizedPrice": "C$ 760"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793725200000AC8951793739600000AC8722",
+       "approxDepartureTime": "5:10 p.m.",
+       "approxArrivalTime": "10:20 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793725200000AC89512101355",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1793739600000AC87216100520",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 760,
+       "currency": "CAD",
+       "localizedPrice": "C$ 760"
+      },
+      "totalPrice": {
+       "price": 760,
+       "currency": "CAD",
+       "localizedPrice": "C$ 760"
+      },
+      "rawPrice": {
+       "price": 760,
+       "currency": "CAD",
+       "localizedPrice": "C$ 760"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 374,
+        "currency": "CAD",
+        "localizedPrice": "C$ 374"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not included<br>(+C$ 374)",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 158cm total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=0WCiDhWKSi.B804y7I_OvzTYwQ_VUUUMA.54449.485f094c36e4f0d3b0a7a844282552c8&h=f2c7c4cbf109&sub=F-3897498132932853250E0de9380828e&viewId=a0232f50-5e2d-43d9-ad3c-d589c0bb5761&viewRank=5",
+      "urlType": "relative"
+     },
+     "bookingId": "F-3897498132932853250E0de9380828e",
+     "providerCode": "CHEAPOAIR",
+     "displayPrice": {
+      "price": 765,
+      "currency": "CAD",
+      "localizedPrice": "C$ 765"
+     },
+     "legFarings": [
+      {
+       "legId": "YULCDG1793725200000AC8951793739600000AC8722",
+       "approxDepartureTime": "5:10 p.m.",
+       "approxArrivalTime": "10:20 a.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1793725200000AC89512101355",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1793739600000AC87216100520",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "CDGYUL1794301200000LX6331794312000000LX862",
+       "approxDepartureTime": "9:55 a.m.",
+       "approxArrivalTime": "3:10 p.m.",
+       "segmentFarings": [
+        {
+         "segmentId": "1794301200000LX63304550620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1794312000000LX8607401010",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 765,
+       "currency": "CAD",
+       "localizedPrice": "C$ 765"
+      },
+      "totalPrice": {
+       "price": 765,
+       "currency": "CAD",
+       "localizedPrice": "C$ 765"
+      },
+      "rawPrice": {
+       "price": 765,
+       "currency": "CAD",
+       "localizedPrice": "C$ 765"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "CAD",
+        "localizedPrice": "C$ 0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown",
+      "checkedBagDisclosures": [
+       {
+        "disclosures": [
+         "Up to 23 lb per bag",
+         "Up to 158cm total"
+        ],
+        "prefix": "Air Canada"
+       },
+       {
+        "disclosures": [
+         "Up to 23 lb per bag",
+         "Up to 158cm total"
+        ],
+        "prefix": "SWISS"
+       }
+      ]
+     },
+     "splitBookingOptions": [],
+     "currency": "CAD",
+     "countryName": "Canada",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 43 x 33 x 16cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "WEIGHT": "Up to 23 lb per bag"
+        }
+       }
+      ],
+      "LX": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 40 x 30 x 10cm"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 55 x 40 x 23cm"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "WEIGHT": "Up to 23 lb per bag"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "isBest": false,
+   "isCheapest": false,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "485f094c36e4f0d3b0a7a844282552c8",
+   "shareableId": "485f094c36e4f0d3b0a7a844282552c8",
+   "shareableUrl": "/flights/YUL-PAR/2026-11-03/2026-11-10/f485f094c36e4f0d3b0a7a844282552c8?viewRank=5",
+   "legs": [
+    {
+     "id": "YULCDG1793725200000AC8951793739600000AC8722",
+     "segments": [
+      {
+       "id": "1793725200000AC89512101355"
+      },
+      {
+       "id": "1793739600000AC87216100520"
+      }
+     ]
+    },
+    {
+     "id": "CDGYUL1794301200000LX6331794312000000LX862",
+     "segments": [
+      {
+       "id": "1794301200000LX63304550620"
+      },
+      {
+       "id": "1794312000000LX8607401010"
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 11,
+   "totalDistinctFares": 3,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 5,
+   "totalProviders": 9
+  },
+  {
+   "resultId": "inline_display_ad_1_4",
+   "type": "inlineDisplayAd"
+  }
+ ],
+ "legs": {
+  "CDGYUL1794301200000LX6331794312000000LX862": {
+   "duration": 675,
+   "segments": [
+    {
+     "id": "1794301200000LX63304550620",
+     "layover": {
+      "duration": 80,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1794312000000LX8607401010"
+    }
+   ],
+   "arrival": "2026-11-10T15:10:00",
+   "departure": "2026-11-10T09:55:00"
+  },
+  "YULCDG1793739600000AC8701": {
+   "duration": 420,
+   "segments": [
+    {
+     "id": "1793739600000AC87016250525",
+     "isArrivalDateMismatch": true
+    }
+   ],
+   "arrival": "2026-11-04T10:25:00",
+   "departure": "2026-11-03T21:25:00"
+  },
+  "YULCDG1793725200000AC8951793739600000AC8722": {
+   "duration": 670,
+   "segments": [
+    {
+     "id": "1793725200000AC89512101355",
+     "layover": {
+      "duration": 135,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1793739600000AC87216100520",
+     "isArrivalDateMismatch": true
+    }
+   ],
+   "arrival": "2026-11-04T10:20:00",
+   "departure": "2026-11-03T17:10:00"
+  },
+  "YULCDG1793739600000SN96341": {
+   "duration": 420,
+   "segments": [
+    {
+     "id": "1793739600000SN963416250525",
+     "isArrivalDateMismatch": true
+    }
+   ],
+   "arrival": "2026-11-04T10:25:00",
+   "departure": "2026-11-03T21:25:00"
+  },
+  "CDGYUL1794319200000AC8711": {
+   "duration": 460,
+   "segments": [
+    {
+     "id": "1794319200000AC87109001040"
+    }
+   ],
+   "arrival": "2026-11-10T15:40:00",
+   "departure": "2026-11-10T14:00:00"
+  }
+ },
+ "segments": {
+  "1793739600000AC87216100520": {
+   "airline": "AC",
+   "flightNumber": "872",
+   "origin": "YYZ",
+   "destination": "CDG",
+   "arrival": "2026-11-04T10:20:00",
+   "departure": "2026-11-03T21:10:00",
+   "equipmentTypeName": "Boeing 777-300ER",
+   "duration": 430,
+   "isOvernight": true
+  },
+  "1794312000000LX8607401010": {
+   "airline": "LX",
+   "flightNumber": "86",
+   "origin": "ZRH",
+   "destination": "YUL",
+   "arrival": "2026-11-10T15:10:00",
+   "departure": "2026-11-10T12:40:00",
+   "equipmentTypeName": "Airbus A330-300",
+   "duration": 510
+  },
+  "1793739600000AC87016250525": {
+   "airline": "AC",
+   "flightNumber": "870",
+   "origin": "YUL",
+   "destination": "CDG",
+   "arrival": "2026-11-04T10:25:00",
+   "departure": "2026-11-03T21:25:00",
+   "equipmentTypeName": "Boeing 777-300ER",
+   "duration": 420,
+   "isOvernight": true
+  },
+  "1794301200000LX63304550620": {
+   "airline": "LX",
+   "flightNumber": "633",
+   "origin": "CDG",
+   "destination": "ZRH",
+   "arrival": "2026-11-10T11:20:00",
+   "departure": "2026-11-10T09:55:00",
+   "equipmentTypeName": "Airbus A320-100/200",
+   "duration": 85
+  },
+  "1793725200000AC89512101355": {
+   "airline": "AC",
+   "flightNumber": "895",
+   "origin": "YUL",
+   "destination": "YYZ",
+   "arrival": "2026-11-03T18:55:00",
+   "departure": "2026-11-03T17:10:00",
+   "equipmentTypeName": "Airbus A330-300",
+   "duration": 105
+  },
+  "1793739600000SN963416250525": {
+   "airline": "SN",
+   "flightNumber": "9634",
+   "operationalDisplay": "Air Canada",
+   "origin": "YUL",
+   "destination": "CDG",
+   "arrival": "2026-11-04T10:25:00",
+   "departure": "2026-11-03T21:25:00",
+   "equipmentTypeName": "Boeing 777-300ER",
+   "duration": 420,
+   "isOvernight": true
+  },
+  "1794319200000AC87109001040": {
+   "airline": "AC",
+   "flightNumber": "871",
+   "origin": "CDG",
+   "destination": "YUL",
+   "arrival": "2026-11-10T15:40:00",
+   "departure": "2026-11-10T14:00:00",
+   "equipmentTypeName": "Boeing 777-300ER",
+   "duration": 460
+  }
+ },
+ "airlines": {
+  "AC": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/AC.png?crop=false&width=108&height=92&fallback=default1.png&_v=0c9c508395bb634d0a68fb50eb9f3c57",
+    "urlType": "absolute"
+   },
+   "name": "Air Canada",
+   "airlineFeeUrl": {
+    "url": "https://www.aircanada.com/ca/en/aco/home/plan/baggage/checked.html",
+    "urlType": "absolute"
+   }
+  },
+  "MULT": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/MULT.png?crop=false&width=108&height=92&fallback=default2.png&_v=230551432b21d8d61f889d8fad67a560",
+    "urlType": "absolute"
+   },
+   "name": "Multiple airlines"
+  },
+  "SN": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/SN.png?crop=false&width=108&height=92&fallback=default3.png&_v=123f7f222ad9756b5898357021dbb757",
+    "urlType": "absolute"
+   },
+   "name": "Brussels Airlines",
+   "airlineFeeUrl": {
+    "url": "https://www.brusselsairlines.com/com/misc/conditions.aspx",
+    "urlType": "absolute"
+   }
+  },
+  "LH": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/LH.png?crop=false&width=108&height=92&fallback=default2.png&_v=a1e3a69579474969d2b123789717863f",
+    "urlType": "absolute"
+   },
+   "name": "Lufthansa",
+   "airlineFeeUrl": {
+    "url": "https://www.lufthansa.com/ca/en/free-baggage-rules",
+    "urlType": "absolute"
+   }
+  },
+  "LX": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/LX.png?crop=false&width=108&height=92&fallback=default3.png&_v=fa51cb755e76e9f221e488bb98999eeb",
+    "urlType": "absolute"
+   },
+   "name": "SWISS",
+   "airlineFeeUrl": {
+    "url": "https://www.swiss.com/ch/EN/prepare/baggage",
+    "urlType": "absolute"
+   }
+  }
+ }
+}

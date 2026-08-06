@@ -23,11 +23,12 @@ logger = logging.getLogger(__name__)
 # Toute source constructible par build_providers doit figurer ici, sinon le câblage lève une
 # KeyError au démarrage. Air Canada y est revenu le 6 août, après réouverture de la source (voir
 # docs/superpowers/notes/2026-08-06-air-canada-reouverture.md) ; son intervalle est le plus long
-# des trois, son parcours étant le plus lourd.
+# des quatre, son parcours étant le plus lourd.
 INTERVALLES = {
     "google_flights": "interval_google_hours",
     "transat": "interval_transat_hours",
     "air_canada": "interval_air_canada_hours",
+    "kayak": "interval_kayak_hours",
 }
 
 # Décalage aléatoire appliqué à chaque passage, en secondes.

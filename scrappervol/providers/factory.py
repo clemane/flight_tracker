@@ -31,6 +31,10 @@ def build_providers(settings: Settings) -> list[PriceProvider]:
                 from scrappervol.providers.air_canada import AirCanadaProvider
 
                 sources.append(AirCanadaProvider(settings))
+            elif nom == "kayak":
+                from scrappervol.providers.kayak import KayakProvider
+
+                sources.append(KayakProvider(settings))
             else:
                 logger.warning("source inconnue ignorée : %s", nom)
         except ImportError as erreur:

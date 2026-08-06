@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     interval_google_hours: int = 4
     interval_transat_hours: int = 6
     interval_air_canada_hours: int = 8
+    interval_kayak_hours: int = 4
     digest_hour: int = 18
 
     exception_threshold: float = 0.40
@@ -35,7 +36,7 @@ class Settings(BaseSettings):
     request_pause_min_s: int = 5
     request_pause_max_s: int = 20
 
-    # Deux sources actives : Google Flights et Air Transat.
+    # Quatre sources actives.
     #
     # `transat` : la page pilotée à la tâche 11 s'arrêtait à l'étape « departure », qui n'affiche
     # que le prix du vol aller (« à partir de »), pas un total aller-retour — d'où son retrait
@@ -52,13 +53,22 @@ class Settings(BaseSettings):
     # (serveur X démarré par le conteneur), aboutit au récapitulatif de réservation et à son
     # total. Compte rendu : docs/superpowers/notes/2026-08-05-air-canada-abandon.md
     #
-    # C'est la source la plus lente des trois (environ 80 s, contre un appel d'API pour Google
+    # C'est la source la plus lente des quatre (environ 70 s, contre un appel d'API pour Google
     # Flights) : elle mène un parcours de réservation complet, aller puis retour, parce que les
     # pages de résultats n'affichent que des tarifs « par personne, dans chaque sens ».
+    #
+    # `kayak` : la seule source qui ne soit pas un transporteur. Un relevé y rapporte les tarifs
+    # de vingt-quatre revendeurs — Expedia, FlightHub, Gotogate, Trip.com, eDreams, Kiwi.com —
+    # dont les sites refusent les robots un par un (403 Cloudflare, 429 DataDome, page vide).
+    # C'est de ce côté que viennent les tarifs les plus agressifs, ceux qu'aucune source de
+    # compagnie ne peut voir. Son intervalle est aligné sur celui de Google Flights : elle est
+    # rapide (une minute environ) et c'est celle qui a le plus de chances de voir passer une
+    # aubaine.
     enabled_providers: Annotated[list[str], NoDecode] = [
         "google_flights",
         "transat",
         "air_canada",
+        "kayak",
     ]
 
     @field_validator("enabled_providers", mode="before")
