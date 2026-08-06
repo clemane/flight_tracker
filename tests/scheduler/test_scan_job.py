@@ -11,6 +11,7 @@ from scrappervol.storage.models import (
     Alert,
     AlertKind,
     DailyLow,
+    NotifyHealth,
     Observation,
     ProviderHealth,
     Route,
@@ -707,3 +708,110 @@ class TestAtomiciteDuPassage:
             assert sante is not None
             assert sante.consecutive_failures == 1
             assert sante.last_error
+
+
+class MailerEnPanne:
+    """Refuse tout envoi, comme un serveur SMTP injoignable."""
+
+    def __init__(self, motif: str = "[Errno 111] Connection refused") -> None:
+        self.motif = motif
+        self.tentatives = 0
+
+    def send(self, mail, to: str) -> None:
+        self.tentatives += 1
+        raise RuntimeError(f"envoi SMTP impossible : {self.motif}")
+
+
+def test_une_alerte_perdue_laisse_une_trace_consultable(
+    session, reglages, fausse_source, sans_pause
+):
+    """Une aubaine détectée mais non remise vaut une aubaine manquée — et se voyait moins.
+
+    Sans cette trace, la seule preuve de l'échec était une ligne de journal, que personne ne lit
+    avant de s'étonner du silence.
+    """
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+    facteur = MailerEnPanne()
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+        reglages,
+        facteur,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert facteur.tentatives == 1
+    assert resultat.exceptions_sent == 0
+
+    sante = session.get(NotifyHealth, "email")
+    assert sante is not None
+    assert sante.consecutive_failures == 1
+    assert sante.last_failure_at == MAINTENANT
+    assert "Connection refused" in (sante.last_error or "")
+
+
+def test_un_smtp_en_panne_ne_coute_ni_observations_ni_plus_bas(
+    session, reglages, fausse_source, sans_pause
+):
+    """La règle inverse de la trace : l'échec d'envoi ne doit rien détruire de la collecte."""
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+        reglages,
+        MailerEnPanne(),
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.offers_recorded == 1
+    assert session.exec(select(Observation)).all()
+    assert repo.daily_low_for(session, trajet.id, AUJOURDHUI) is not None
+
+
+def test_aucune_trace_dechec_quand_lenvoi_aboutit(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    sante = session.get(NotifyHealth, "email")
+    assert sante is not None
+    assert sante.consecutive_failures == 0
+    assert sante.last_success_at == MAINTENANT
+
+
+def test_un_passage_sans_alerte_ne_touche_pas_la_sante_du_canal(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Le canal n'est jugé que sur des envois réels : un scan calme n'est pas un succès d'envoi."""
+    _trajet(session)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(600, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert session.get(NotifyHealth, "email") is None

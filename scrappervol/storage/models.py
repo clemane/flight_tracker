@@ -136,6 +136,25 @@ class ProviderHealth(SQLModel, table=True):
     offers_last_run: int = 0
 
 
+class NotifyHealth(SQLModel, table=True):
+    """Santé du canal de sortie, tenue comme celle des sources.
+
+    Le système surveillait ses entrées et ignorait sa sortie. Or une aubaine détectée puis non
+    remise ne vaut pas mieux qu'une aubaine manquée, et elle échoue plus discrètement : la source
+    en panne finit par se voir dans le tableau de santé, tandis qu'un envoi refusé ne laissait
+    qu'une ligne de journal. C'est la panne silencieuse du §1 du design, appliquée au dernier
+    maillon.
+    """
+
+    __tablename__ = "notify_health"
+
+    channel: str = Field(primary_key=True)
+    last_success_at: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
+    last_failure_at: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
+    consecutive_failures: int = 0
+    last_error: str | None = None
+
+
 class Alert(SQLModel, table=True):
     __tablename__ = "alert"
 

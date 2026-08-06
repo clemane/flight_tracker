@@ -16,6 +16,8 @@ from scrappervol.detection.rules import (
     relative_gap,
 )
 from scrappervol.live.search import SearchRun
+from scrappervol.notify.mailer import build_mailer, defaut_de_configuration
+from scrappervol.notify.render import render_test
 from scrappervol.storage import repo
 from scrappervol.storage.models import ProviderHealth, Route
 from scrappervol.web.app import get_now, get_session, templates
@@ -52,6 +54,31 @@ class LigneSante:
     offers_last_run: int
     last_error: str | None
     is_stale: bool
+
+
+@dataclass
+class EtatCourriel:
+    """Vue du canal de sortie pour la page de santé.
+
+    `defaut_configuration` et `dernière erreur` disent deux choses différentes : l'un se règle dans
+    le `.env`, l'autre se diagnostique. Les confondre enverrait chercher une panne réseau là où il
+    n'y a qu'un fichier d'exemple jamais rempli.
+    """
+
+    defaut_configuration: str | None
+    destinataire: str
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    consecutive_failures: int
+    last_error: str | None
+
+    @property
+    def utilisable(self) -> bool:
+        return self.defaut_configuration is None
+
+    @property
+    def en_panne(self) -> bool:
+        return self.utilisable and self.consecutive_failures > 0
 
 
 def _ligne(session: Session, route: Route, settings, now: datetime) -> LigneTableau:
@@ -256,12 +283,8 @@ def surveiller_recherche(
     return RedirectResponse("/routes", status_code=303)
 
 
-@router.get("/health", response_class=HTMLResponse)
-def health(
-    request: Request,
-    session: Session = Depends(get_session),  # noqa: B008 — idiome FastAPI standard
-    maintenant: datetime = Depends(get_now),  # noqa: B008
-) -> HTMLResponse:
+def _contexte_sante(request: Request, session: Session, maintenant: datetime) -> dict[str, object]:
+    """Contexte de la page de santé, partagé par l'affichage et par l'envoi de test."""
     settings = request.app.state.settings
 
     sources = []
@@ -283,9 +306,61 @@ def health(
             )
         )
 
-    return templates.TemplateResponse(
-        request, "health.html.j2", {"sources": sources, "page": "sante"}
+    sante_mail = repo.get_or_create_notify_health(session)
+    courriel = EtatCourriel(
+        defaut_configuration=defaut_de_configuration(settings),
+        destinataire=settings.alert_to,
+        last_success_at=sante_mail.last_success_at,
+        last_failure_at=sante_mail.last_failure_at,
+        consecutive_failures=sante_mail.consecutive_failures,
+        last_error=sante_mail.last_error,
     )
+
+    return {"sources": sources, "courriel": courriel, "page": "sante"}
+
+
+@router.get("/health", response_class=HTMLResponse)
+def health(
+    request: Request,
+    session: Session = Depends(get_session),  # noqa: B008 — idiome FastAPI standard
+    maintenant: datetime = Depends(get_now),  # noqa: B008
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "health.html.j2", _contexte_sante(request, session, maintenant)
+    )
+
+
+@router.post("/health/test-courriel", response_class=HTMLResponse)
+def tester_courriel(
+    request: Request,
+    session: Session = Depends(get_session),  # noqa: B008 — idiome FastAPI standard
+    maintenant: datetime = Depends(get_now),  # noqa: B008
+) -> HTMLResponse:
+    """Envoie un courriel de vérification et rend compte du résultat sur la page.
+
+    Le compte rendu vaut autant que l'envoi : sans lui, la seule façon de savoir si la chaîne
+    fonctionne était d'attendre une aubaine, c'est-à-dire de découvrir la panne au pire moment.
+    """
+    settings = request.app.state.settings
+    defaut = defaut_de_configuration(settings)
+
+    if defaut is not None:
+        erreur = f"Envoi impossible : {defaut}."
+    else:
+        try:
+            build_mailer(settings).send(render_test(maintenant), settings.alert_to)
+        except Exception as exc:  # noqa: BLE001 — le message est destiné à l'écran, pas au code
+            repo.record_notify_failure(session, str(exc), maintenant)
+            erreur = f"Envoi refusé : {exc}"
+        else:
+            repo.record_notify_success(session, maintenant)
+            erreur = None
+    session.commit()
+
+    contexte = _contexte_sante(request, session, maintenant)
+    contexte["test_erreur"] = erreur
+    contexte["test_reussi"] = erreur is None
+    return templates.TemplateResponse(request, "health.html.j2", contexte)
 
 
 @router.get("/routes", response_class=HTMLResponse)

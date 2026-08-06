@@ -142,8 +142,12 @@ def _traiter_exception(
         mailer.send(courriel, settings.alert_to)
     except Exception as erreur:  # noqa: BLE001 — un SMTP en panne ne doit pas coûter les données
         logger.error("alerte non envoyée, sera retentée au prochain passage : %s", erreur)
+        # Pas de validation ici : rien d'irréversible n'a eu lieu, et le passage reste une unité de
+        # travail. La trace part avec le commit de fin de scan.
+        repo.record_notify_failure(session, str(erreur), now)
         return False
 
+    repo.record_notify_success(session, now)
     repo.record_alert(
         session,
         route.id,
@@ -253,8 +257,11 @@ def send_digest(session: Session, settings: Settings, mailer: Mailer, now: datet
         mailer.send(courriel, settings.alert_to)
     except Exception as erreur:  # noqa: BLE001 — un SMTP en panne ne doit pas coûter les données
         logger.error("digest non envoyé : %s", erreur)
+        repo.record_notify_failure(session, str(erreur), now)
+        session.commit()
         return False
 
+    repo.record_notify_success(session, now)
     repo.record_alert(
         session,
         route_id=0,

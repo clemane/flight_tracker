@@ -24,6 +24,7 @@ from scrappervol.storage.models import (
     Alert,
     AlertKind,
     DailyLow,
+    NotifyHealth,
     Observation,
     ProviderHealth,
     Route,
@@ -161,6 +162,46 @@ def record_provider_failure(
     sante.last_error = error
     sante.disabled_until = disabled_until
     sante.offers_last_run = 0
+    session.add(sante)
+    session.flush()
+    session.refresh(sante)
+    return sante
+
+
+CANAL_COURRIEL = "email"
+
+
+def get_or_create_notify_health(session: Session, channel: str = CANAL_COURRIEL) -> NotifyHealth:
+    sante = session.get(NotifyHealth, channel)
+    if sante is None:
+        sante = NotifyHealth(channel=channel)
+        session.add(sante)
+        session.flush()
+        session.refresh(sante)
+    return sante
+
+
+def record_notify_success(
+    session: Session, at: datetime, channel: str = CANAL_COURRIEL
+) -> NotifyHealth:
+    sante = get_or_create_notify_health(session, channel)
+    sante.last_success_at = at
+    sante.consecutive_failures = 0
+    sante.last_error = None
+    session.add(sante)
+    session.flush()
+    session.refresh(sante)
+    return sante
+
+
+def record_notify_failure(
+    session: Session, error: str, at: datetime, channel: str = CANAL_COURRIEL
+) -> NotifyHealth:
+    """Le dernier succès est conservé : il dit depuis quand le canal est muet."""
+    sante = get_or_create_notify_health(session, channel)
+    sante.consecutive_failures += 1
+    sante.last_failure_at = at
+    sante.last_error = error
     session.add(sante)
     session.flush()
     session.refresh(sante)

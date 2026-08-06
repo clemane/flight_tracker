@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scrappervol.config import Settings
-from scrappervol.notify.mailer import NullMailer, SmtpMailer, build_mailer, build_message
+from scrappervol.notify.mailer import (
+    NullMailer,
+    SmtpMailer,
+    build_mailer,
+    build_message,
+    defaut_de_configuration,
+)
 from scrappervol.notify.render import RenderedMail
 
 COURRIEL = RenderedMail(subject="Sujet", html="<p>corps</p>", text="corps")
@@ -25,7 +31,54 @@ def test_build_mailer_retourne_un_null_mailer_sans_hote():
 
 
 def test_build_mailer_retourne_un_smtp_mailer_avec_hote():
-    assert isinstance(build_mailer(Settings(smtp_host="smtp.example.com")), SmtpMailer)
+    reglage = Settings(smtp_host="smtp.fastmail.com", alert_to="clement@courriel.ca")
+    assert isinstance(build_mailer(reglage), SmtpMailer)
+
+
+def test_build_mailer_refuse_denvoyer_sans_destinataire():
+    reglage = Settings(smtp_host="smtp.fastmail.com", alert_to="")
+    assert isinstance(build_mailer(reglage), NullMailer)
+
+
+@pytest.mark.parametrize(
+    "hote",
+    ["smtp.example.com", "SMTP.EXAMPLE.COM", "mail.example.org", "example.com"],
+)
+def test_un_hote_de_documentation_ne_donne_pas_de_smtp_mailer(hote):
+    """RFC 2606 : ces domaines ne résolvent jamais. Tenter l'envoi produisait un échec par passage.
+
+    Le fichier `.env.example` livre `smtp.example.com` ; l'utilisateur qui ne l'a jamais rempli
+    avait donc un mailer qui échouait silencieusement, indistinguable d'une panne réseau.
+    """
+    reglage = Settings(smtp_host=hote, alert_to="clement@courriel.ca")
+    assert isinstance(build_mailer(reglage), NullMailer)
+
+
+def test_un_destinataire_de_documentation_ne_donne_pas_de_smtp_mailer():
+    reglage = Settings(smtp_host="smtp.fastmail.com", alert_to="moi@example.com")
+    assert isinstance(build_mailer(reglage), NullMailer)
+
+
+def test_le_defaut_de_configuration_nomme_le_reglage_fautif():
+    manquant = defaut_de_configuration(Settings(smtp_host="", alert_to="a@b.ca"))
+    assert manquant is not None and "SMTP_HOST" in manquant
+
+    sans_destinataire = defaut_de_configuration(Settings(smtp_host="smtp.b.ca", alert_to=""))
+    assert sans_destinataire is not None and "ALERT_TO" in sans_destinataire
+
+    exemple = defaut_de_configuration(Settings(smtp_host="smtp.example.com", alert_to="a@b.ca"))
+    assert exemple is not None and "smtp.example.com" in exemple
+
+
+def test_aucun_defaut_quand_la_configuration_est_reelle():
+    reglage = Settings(smtp_host="smtp.fastmail.com", alert_to="clement@courriel.ca")
+    assert defaut_de_configuration(reglage) is None
+
+
+def test_un_domaine_qui_contient_example_sans_letre_reste_valide():
+    """`example` doit être le domaine, pas un morceau de mot, sinon on refuse des hôtes réels."""
+    reglage = Settings(smtp_host="smtp.example-hosting.ca", alert_to="a@b.ca")
+    assert defaut_de_configuration(reglage) is None
 
 
 def test_le_null_mailer_journalise_au_lieu_denvoyer(caplog):

@@ -131,6 +131,31 @@ def render_digest(data: DigestData) -> RenderedMail:
     )
 
 
+def render_test(at: datetime) -> RenderedMail:
+    """Courriel de vérification de la chaîne de remise.
+
+    Sans gabarit : ce message n'a rien à mettre en forme, et le faire passer par un fichier
+    l'exposerait à casser au même endroit que les autres. On veut précisément qu'il aboutisse
+    quand tout le reste échoue, pour distinguer un défaut d'envoi d'un défaut de rendu.
+    """
+    sujet = "ScrapperVol — courriel de test"
+    horodatage = at.strftime("%Y-%m-%d %H:%M UTC")
+    texte = (
+        "Ce message confirme que ScrapperVol sait vous joindre.\n\n"
+        f"Émis le {horodatage}.\n"
+        "Les alertes d'aubaine et le digest quotidien emprunteront ce même chemin."
+    )
+    return RenderedMail(
+        subject=sujet,
+        html=(
+            f"<p>Ce message confirme que ScrapperVol sait vous joindre.</p>"
+            f"<p>Émis le {horodatage}.<br>"
+            f"Les alertes d'aubaine et le digest quotidien emprunteront ce même chemin.</p>"
+        ),
+        text=texte,
+    )
+
+
 def render_exception(data: ExceptionData) -> RenderedMail:
     ecart = round(data.gap_vs_median * 100)
     sujet = f"ScrapperVol — {data.destination} à {data.price_cad} $ ({ecart} % sous la médiane)"
