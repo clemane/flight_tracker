@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
+from collections.abc import Sequence
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -53,6 +55,16 @@ _SEL_MODALE = "ac-ui-avail-fare-upsell-modal-pres"
 _SEL_MODALE_CONSERVER = f"{_SEL_MODALE} .basic-footer button"
 _SEL_MODALE_CASE = f"{_SEL_MODALE} input[type=checkbox]"
 
+_SEL_CONTENEUR_ORIGINE = "#flightsOriginLocationbkmgLocationContainer"
+
+# Reprises d'une saisie d'aéroport restée sans suggestion (formulaire pas encore réactif).
+_ESSAIS_SAISIE = 3
+
+# Les trois étapes du parcours, dans l'ordre. Le passage de l'une à l'autre ne se voit qu'à l'URL :
+# les pages aller et retour partagent les mêmes composants, et attendre un délai plutôt qu'un
+# changement d'adresse laisserait relever les vols de l'aller à la place de ceux du retour.
+_ETAPE_ALLER = "**/availability/**"
+_ETAPE_RETOUR = "**/inbound**"
 _ETAPE_RECAPITULATIF = "review-trip"
 
 # « Total général 540,71CAD », « 1 234,56CAD » : l'espace (normal ou insécable) sépare les
@@ -270,17 +282,26 @@ def _remplir_aeroport(page: Page, conteneur: str, champ: str, suggestion: str, c
 
     Le champ arrive prérempli d'une valeur par défaut : sans effacement explicite, la frappe s'y
     concatène et aucune suggestion ne correspond (relevé dès le premier essai, en août).
+
+    La saisie est reprise jusqu'à `_ESSAIS_SAISIE` fois : le champ existe dans le DOM avant
+    qu'Angular n'y branche son service de suggestions, et une frappe arrivée trop tôt est acceptée
+    sans déclencher la moindre recherche. Constater l'absence de suggestion et refrapper vaut mieux
+    que parier sur un délai d'hydratation — le pari tient jusqu'au jour où le site est lent.
     """
-    page.click(conteneur)
-    page.wait_for_timeout(700)
-    page.click(champ)
-    page.keyboard.press("Control+a")
-    page.keyboard.press("Delete")
-    page.type(champ, code, delay=140)
-    try:
-        page.wait_for_selector(suggestion, timeout=15_000)
-    except Exception as erreur:  # noqa: BLE001 — traduit vers l'exception du domaine
-        raise ProviderError(f"{NOM} : aucune suggestion d'aéroport pour {code!r}") from erreur
+    for essai in range(1, _ESSAIS_SAISIE + 1):
+        page.click(conteneur)
+        page.wait_for_timeout(700)
+        page.click(champ)
+        page.keyboard.press("Control+a")
+        page.keyboard.press("Delete")
+        page.type(champ, code, delay=140)
+        if _apparait(page, suggestion, 10_000):
+            break
+        if essai == _ESSAIS_SAISIE:
+            raise ProviderError(f"{NOM} : aucune suggestion d'aéroport pour {code!r}")
+        logger.debug(
+            "%s : pas de suggestion pour %s, saisie reprise (essai %d)", NOM, code, essai + 1
+        )
     page.wait_for_timeout(500)
     page.click(suggestion)
     page.wait_for_timeout(700)
@@ -318,6 +339,119 @@ def _rang_cellule(classe: str) -> int | None:
     return int(correspondance.group(1)) if correspondance else None
 
 
+def _apparait(page: Page, selecteur: str, delai_ms: int) -> bool:
+    """Vrai si le sélecteur devient visible dans le délai imparti, faux s'il ne vient jamais.
+
+    Réservé aux éléments qui peuvent légitimement manquer — une modale ne s'ouvre pas à toutes les
+    étapes. Les attendre par une durée fixe coûte ce délai à chaque passage, y compris quand ils
+    sont déjà affichés.
+    """
+    try:
+        page.wait_for_selector(selecteur, state="visible", timeout=delai_ms)
+    except Exception:  # noqa: BLE001 — délai dépassé : l'élément est simplement absent
+        return False
+    return True
+
+
+def _attendre_reseau_calme(page: Page, delai_ms: int) -> None:
+    """Laisse l'application finir de se charger, sans en faire une condition d'échec.
+
+    Le réseau ne retombe pas toujours au calme : le site entretient des appels de fond. Ce n'est
+    donc qu'un signal opportuniste, qui évite au premier essai de saisie d'arriver dans le vide ;
+    la reprise dans `_remplir_aeroport` couvre le cas où il n'arrive jamais.
+    """
+    try:
+        page.wait_for_load_state("networkidle", timeout=delai_ms)
+    except Exception:  # noqa: BLE001 — délai dépassé : on tente la saisie malgré tout
+        logger.debug("%s : réseau encore actif après %d ms, saisie tentée", NOM, delai_ms)
+
+
+def _attendre_etape(page: Page, motif: str, description: str) -> None:
+    """Attend que le parcours ait basculé sur l'étape suivante.
+
+    L'URL est le seul signal qui distingue la page qu'on vient de quitter de celle qui s'ouvre :
+    les deux affichent les mêmes composants. Sans cette attente, les vols de l'aller encore à
+    l'écran seraient relevés comme étant ceux du retour — une erreur muette, qui rendrait un prix
+    plausible pour un trajet qui n'a pas été demandé.
+    """
+    try:
+        page.wait_for_url(motif, timeout=90_000)
+    except Exception as erreur:  # noqa: BLE001 — traduit vers l'exception du domaine
+        raise ProviderError(f"{NOM} : {description} — URL restée sur {page.url}") from erreur
+
+
+class Candidat(NamedTuple):
+    """Un tarif Économique relevé sur une page de résultats.
+
+    `index` désigne la cellule dans l'ordre du DOM : c'est par lui qu'on retrouve le bouton à
+    cliquer une fois le choix arrêté. `escales` vaut `None` quand le bloc de vol correspondant
+    n'a pas pu être lu.
+    """
+
+    prix_cad: int
+    index: int
+    escales: int | None
+
+
+def _respecte_escales(candidat: Candidat, max_stops: int | None) -> bool:
+    """Vrai si le candidat tient dans la contrainte d'escales demandée.
+
+    Un candidat dont les escales sont illisibles est écarté dès qu'une contrainte existe : le
+    retenir reviendrait à parier qu'il la respecte, et un vol à correspondance pris pour un direct
+    fausse la comparaison entre sources tout autant qu'une erreur de prix.
+    """
+    if max_stops is None:
+        return True
+    return candidat.escales is not None and candidat.escales <= max_stops
+
+
+def _choisir_moins_cher(candidats: Sequence[Candidat], max_stops: int | None) -> Candidat | None:
+    """Le tarif le plus bas parmi ceux qui respectent `max_stops`, ou `None` si aucun ne tient.
+
+    À prix égal, le vol au moins d'escales l'emporte, et un nombre d'escales inconnu passe en
+    dernier : sans ce départage, deux relevés du même prix pourraient désigner des vols différents
+    d'un jour à l'autre et faire osciller l'historique sans qu'aucun prix n'ait bougé.
+    """
+    retenus = [c for c in candidats if _respecte_escales(c, max_stops)]
+    if not retenus:
+        return None
+    return min(
+        retenus,
+        key=lambda c: (c.prix_cad, math.inf if c.escales is None else c.escales, c.index),
+    )
+
+
+def _relever_candidats(page: Page, cellules: Locator) -> list[Candidat]:
+    """Lit prix et escales de chaque cellule de cabine Économique affichée.
+
+    Les escales sont relevées même sans contrainte demandée : elles servent aussi à départager
+    deux tarifs identiques.
+    """
+    blocs = page.locator(_SEL_BLOC_VOL)
+    nombre_blocs = blocs.count()
+
+    releves: list[Candidat] = []
+    for i in range(cellules.count()):
+        cellule = cellules.nth(i)
+        try:
+            prix = _prix_en_cad(cellule.inner_text())
+            classe = cellule.get_attribute("class") or ""
+        except Exception:  # noqa: BLE001 — cellule disparue du DOM entre-temps
+            continue
+        if prix is None:
+            continue
+
+        rang = _rang_cellule(classe)
+        escales = None
+        if rang is not None and rang < nombre_blocs:
+            try:
+                escales = _escales(blocs.nth(rang).inner_text())
+            except Exception:  # noqa: BLE001 — même volatilité côté bloc de vol
+                escales = None
+        releves.append(Candidat(prix_cad=prix, index=i, escales=escales))
+    return releves
+
+
 def _cellule_la_moins_chere(page: Page, max_stops: int | None) -> Locator:
     """La cellule Économique au tarif le plus bas, parmi les vols respectant `max_stops`.
 
@@ -327,34 +461,30 @@ def _cellule_la_moins_chere(page: Page, max_stops: int | None) -> Locator:
     l'historique d'une route mêlerait alors deux réalités différentes.
     """
     page.wait_for_selector("button.button-cell-container", timeout=45_000)
-    page.wait_for_timeout(2500)
+    # Les boutons de cabine apparaissent avant leurs prix : attendre qu'au moins un montant soit
+    # lisible, plutôt qu'une durée forfaitaire censée couvrir le pire des cas. La garde vaut aussi
+    # pour elle-même — une page de tarifs tous vides serait sinon prise pour une absence de vol.
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel))"
+        ".some((e) => /\\d\\s*CAD/.test(e.innerText))",
+        arg=_SEL_CELLULE_ECONOMIQUE,
+        timeout=30_000,
+    )
 
     cellules = page.locator(_SEL_CELLULE_ECONOMIQUE)
-    blocs = page.locator(_SEL_BLOC_VOL)
-    nombre_blocs = blocs.count()
-
-    candidats: list[tuple[int, int]] = []
-    for i in range(cellules.count()):
-        cellule = cellules.nth(i)
-        try:
-            prix = _prix_en_cad(cellule.inner_text())
-        except Exception:  # noqa: BLE001 — cellule disparue du DOM entre-temps
-            continue
-        if prix is None:
-            continue
-        if max_stops is not None:
-            rang = _rang_cellule(cellule.get_attribute("class") or "")
-            if rang is None or rang >= nombre_blocs:
-                continue
-            escales = _escales(blocs.nth(rang).inner_text())
-            if escales is None or escales > max_stops:
-                continue
-        candidats.append((prix, i))
-
-    if not candidats:
+    candidats = _relever_candidats(page, cellules)
+    choix = _choisir_moins_cher(candidats, max_stops)
+    if choix is None:
+        # Distinguer les deux causes : une page vide de tarifs est une dérive de sélecteur ou une
+        # absence de vol, une page pleine de tarifs tous écartés est une contrainte trop serrée.
+        # Les confondre enverrait chercher le défaut au mauvais endroit.
+        if candidats:
+            raise ProviderError(
+                f"{NOM} : aucun des {len(candidats)} tarifs relevés ne tient dans "
+                f"max_stops={max_stops}"
+            )
         raise ProviderError(f"{NOM} : aucun tarif Économique exploitable sur la page de résultats")
-    candidats.sort()
-    return cellules.nth(candidats[0][1])
+    return cellules.nth(choix.index)
 
 
 def _franchir_modale(page: Page) -> None:
@@ -363,8 +493,7 @@ def _franchir_modale(page: Page) -> None:
     Elle exige d'abord d'accepter les restrictions du tarif le plus bas (une case à cocher), sans
     quoi son bouton de confirmation reste inopérant.
     """
-    modale = page.locator(_SEL_MODALE)
-    if modale.count() == 0:
+    if not _apparait(page, _SEL_MODALE, 8000):
         return
 
     case = page.locator(_SEL_MODALE_CASE).first
@@ -373,20 +502,19 @@ def _franchir_modale(page: Page) -> None:
             case.check(timeout=5000)
         except Exception:  # noqa: BLE001 — repli sur un clic déclenché côté page
             page.evaluate("(el) => el.click()", case.element_handle())
-        page.wait_for_timeout(1000)
 
     conserver = page.locator(_SEL_MODALE_CONSERVER).first
     if conserver.count() == 0 or not conserver.is_visible():
         raise ProviderError(f"{NOM} : modale de tarif ouverte sans bouton pour conserver le choix")
     _cliquer(page, conserver)
-    page.wait_for_timeout(9000)
 
 
 def _selectionner_vol(page: Page, etape: str, max_stops: int | None) -> None:
     """Choisit le vol le moins cher de l'étape, son tarif le plus bas, puis franchit la modale."""
     _cliquer(page, _cellule_la_moins_chere(page, max_stops))
-    page.wait_for_timeout(3500)
 
+    if not _apparait(page, _SEL_BOUTON_TARIF, 25_000):
+        raise ProviderError(f"{NOM} : aucun tarif proposé à l'étape {etape!r}")
     tarifs = page.locator(_SEL_BOUTON_TARIF)
     visibles = [i for i in range(tarifs.count()) if tarifs.nth(i).is_visible()]
     if not visibles:
@@ -394,7 +522,6 @@ def _selectionner_vol(page: Page, etape: str, max_stops: int | None) -> None:
     # Le panneau range ses tarifs du moins cher au plus cher : le premier bouton visible est donc
     # le tarif le plus bas de la cabine, celui dont le prix vient d'être relevé sur la cellule.
     _cliquer(page, tarifs.nth(visibles[0]))
-    page.wait_for_timeout(3000)
 
     _franchir_modale(page)
 
@@ -414,12 +541,15 @@ def _verifier_etape_recapitulatif(url: str) -> None:
 def _piloter_recherche(page: Page, query: SearchQuery) -> None:
     """Callback `interact` : remplit le formulaire, choisit l'aller puis le retour, et s'arrête
     sur le récapitulatif — la seule page du parcours qui porte le total aller-retour."""
-    page.wait_for_timeout(8000)
+    # Le formulaire n'existe qu'une fois l'application Angular hydratée : l'attendre lui-même est
+    # le signal que l'accueil est prêt à être piloté.
+    page.wait_for_selector(_SEL_CONTENEUR_ORIGINE, timeout=45_000)
+    _attendre_reseau_calme(page, 20_000)
     _accepter_temoins(page)
 
     _remplir_aeroport(
         page,
-        "#flightsOriginLocationbkmgLocationContainer",
+        _SEL_CONTENEUR_ORIGINE,
         "#flightsOriginLocation",
         "#flightsOriginLocationSearchResult0",
         query.origin.upper(),
@@ -436,11 +566,14 @@ def _piloter_recherche(page: Page, query: SearchQuery) -> None:
     _choisir_dates(page, query.depart_date, query.return_date)
 
     page.click("#bkmg-desktop_findButton")
-    page.wait_for_timeout(22_000)
+    _attendre_etape(page, _ETAPE_ALLER, "résultats de l'aller non affichés")
     _accepter_temoins(page)
 
     _selectionner_vol(page, "aller", query.max_stops)
+    _attendre_etape(page, _ETAPE_RETOUR, "résultats du retour non affichés")
+
     _selectionner_vol(page, "retour", query.max_stops)
+    _attendre_etape(page, f"**/{_ETAPE_RECAPITULATIF}**", "récapitulatif non atteint")
 
     _verifier_etape_recapitulatif(page.url)
     page.wait_for_selector(_SEL_TOTAL, timeout=20_000)

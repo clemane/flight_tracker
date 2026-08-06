@@ -9,6 +9,8 @@ from scrappervol.core.types import SearchQuery, TripType
 from scrappervol.providers.air_canada import (
     NOM,
     AirCanadaProvider,
+    Candidat,
+    _choisir_moins_cher,
     _duree_en_minutes,
     _escales,
     _prix_en_cad,
@@ -283,6 +285,84 @@ class TestSearch:
         monkeypatch.setattr(fournisseur, "_fetch", tomber)
         with pytest.raises(ProviderError, match="échec de la requête"):
             fournisseur.search(REQUETE)
+
+
+class TestChoixDuTarif:
+    """Le choix du vol à retenir sur une page de résultats.
+
+    C'est ici que se décide le prix relevé pour la journée : une erreur de choix ne se voit dans
+    aucune trace, elle se contente de déposer dans l'historique le prix d'un vol que la requête
+    n'avait pas demandé.
+    """
+
+    def test_retient_le_moins_cher_sans_contrainte(self) -> None:
+        candidats = [
+            Candidat(prix_cad=581, index=0, escales=0),
+            Candidat(prix_cad=541, index=1, escales=1),
+            Candidat(prix_cad=612, index=2, escales=0),
+        ]
+
+        assert _choisir_moins_cher(candidats, None) == candidats[1]
+
+    def test_un_direct_plus_cher_bat_une_correspondance_moins_chere(self) -> None:
+        """Le cas réel observé sur YUL->CUN : 541 $ avec 13 h 30 d'escale contre 581 $ direct."""
+        correspondance = Candidat(prix_cad=541, index=0, escales=1)
+        direct = Candidat(prix_cad=581, index=1, escales=0)
+
+        assert _choisir_moins_cher([correspondance, direct], 0) == direct
+
+    def test_ecarte_les_escales_illisibles_quand_une_contrainte_existe(self) -> None:
+        inconnu = Candidat(prix_cad=400, index=0, escales=None)
+        direct = Candidat(prix_cad=581, index=1, escales=0)
+
+        assert _choisir_moins_cher([inconnu, direct], 0) == direct
+
+    def test_accepte_les_escales_illisibles_sans_contrainte(self) -> None:
+        """Sans exigence sur les escales, ne pas savoir les lire n'est pas un motif d'exclusion."""
+        inconnu = Candidat(prix_cad=400, index=0, escales=None)
+        direct = Candidat(prix_cad=581, index=1, escales=0)
+
+        assert _choisir_moins_cher([inconnu, direct], 0) == direct
+        assert _choisir_moins_cher([inconnu, direct], None) == inconnu
+
+    def test_max_stops_borne_par_le_haut_sans_exiger_l_egalite(self) -> None:
+        direct = Candidat(prix_cad=700, index=0, escales=0)
+        une = Candidat(prix_cad=600, index=1, escales=1)
+        deux = Candidat(prix_cad=500, index=2, escales=2)
+
+        assert _choisir_moins_cher([direct, une, deux], 1) == une
+        assert _choisir_moins_cher([direct, une, deux], 2) == deux
+
+    def test_a_prix_egal_le_moins_d_escales_gagne(self) -> None:
+        correspondance = Candidat(prix_cad=541, index=0, escales=2)
+        direct = Candidat(prix_cad=541, index=1, escales=0)
+
+        assert _choisir_moins_cher([correspondance, direct], None) == direct
+
+    def test_a_prix_egal_les_escales_inconnues_passent_en_dernier(self) -> None:
+        inconnu = Candidat(prix_cad=541, index=0, escales=None)
+        correspondance = Candidat(prix_cad=541, index=1, escales=3)
+
+        assert _choisir_moins_cher([inconnu, correspondance], None) == correspondance
+
+    def test_depart_deterministe_a_prix_et_escales_egaux(self) -> None:
+        """Deux vols indiscernables : toujours le premier de la page, jamais l'un puis l'autre."""
+        premier = Candidat(prix_cad=541, index=0, escales=1)
+        second = Candidat(prix_cad=541, index=1, escales=1)
+
+        assert _choisir_moins_cher([premier, second], None) == premier
+        assert _choisir_moins_cher([second, premier], None) == premier
+
+    def test_aucun_candidat(self) -> None:
+        assert _choisir_moins_cher([], None) is None
+
+    def test_aucun_candidat_ne_respecte_la_contrainte(self) -> None:
+        candidats = [
+            Candidat(prix_cad=541, index=0, escales=1),
+            Candidat(prix_cad=612, index=1, escales=2),
+        ]
+
+        assert _choisir_moins_cher(candidats, 0) is None
 
 
 @pytest.mark.live
