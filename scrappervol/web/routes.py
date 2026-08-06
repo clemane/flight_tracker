@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -19,7 +19,7 @@ from scrappervol.live.search import SearchRun
 from scrappervol.notify.mailer import build_mailer, defaut_de_configuration
 from scrappervol.notify.render import render_test
 from scrappervol.storage import repo
-from scrappervol.storage.models import ProviderHealth, Route
+from scrappervol.storage.models import Observation, ProviderHealth, Route
 from scrappervol.web.app import get_now, get_session, templates
 from scrappervol.web.charts import sparkline_points
 from scrappervol.web.forms import RouteFormError, validate_route_form, validate_search_form
@@ -27,16 +27,37 @@ from scrappervol.web.forms import RouteFormError, validate_route_form, validate_
 router = APIRouter()
 
 
+# Au-delà d'une semaine, un relevé ne dit plus ce que coûte un billet aujourd'hui.
+FRAICHEUR_DATES_J = 7
+
+# Assez de dates pour voir la forme de l'année sans noyer la page.
+DATES_AFFICHEES = 12
+
+
 @dataclass
 class LigneTableau:
     route: Route
     price_cad: int | None
     provider: str
+    departure_date: date | None
     median_price: float | None
     gap_vs_median: float | None
     is_find: bool
     history_building: bool
     points: str
+
+
+@dataclass
+class LigneDate:
+    """Une date de départ et ce qu'elle coûte de moins cher.
+
+    Le prix du jour, seul, dit combien mais jamais pour quand : sur un horizon de douze mois
+    l'écart entre deux dates dépasse souvent l'écart qui déclencherait une alerte.
+    """
+
+    observation: object
+    gap_vs_median: float | None
+    meilleur: bool
 
 
 @dataclass
@@ -91,10 +112,19 @@ def _ligne(session: Session, route: Route, settings, now: datetime) -> LigneTabl
     mediane = contexte.median_price
     prix = ligne.price_cad if ligne else None
 
+    # Le plus bas quotidien pointe l'observation qui l'a produit : elle seule sait pour quelle
+    # date de départ ce prix vaut. Sans elle, la carte affiche un montant sans échéance.
+    origine = (
+        session.get(Observation, ligne.observation_id)
+        if ligne and ligne.observation_id
+        else None
+    )
+
     return LigneTableau(
         route=route,
         price_cad=prix,
         provider=ligne.provider if ligne else "",
+        departure_date=origine.departure_date if origine else None,
         median_price=mediane,
         gap_vs_median=relative_gap(prix, mediane) if prix and mediane else None,
         is_find=(
@@ -174,6 +204,57 @@ def accueil(
         request,
         "search.html.j2",
         {"lignes": lignes, "aujourdhui": maintenant.date(), "page": "recherche"},
+    )
+
+
+@router.get("/routes/{route_id}/dates", response_class=HTMLResponse)
+def dates_du_trajet(
+    request: Request,
+    route_id: int,
+    session: Session = Depends(get_session),  # noqa: B008 — idiome FastAPI standard
+    maintenant: datetime = Depends(get_now),  # noqa: B008
+) -> HTMLResponse:
+    """Éventail des dates de départ relevées pour un trajet, la moins chère en tête."""
+    settings = request.app.state.settings
+    trajet = session.get(Route, route_id)
+    if trajet is None:
+        raise HTTPException(status_code=404, detail="Trajet introuvable")
+
+    observations = repo.best_by_departure_date(
+        session,
+        route_id,
+        since=maintenant - timedelta(days=FRAICHEUR_DATES_J),
+        limit=DATES_AFFICHEES,
+    )
+
+    historique = repo.daily_low_history(
+        session,
+        route_id,
+        before_day=maintenant.date(),
+        window_days=settings.history_window_days,
+    )
+    contexte = PriceContext(daily_lows=historique)
+    # Sans historique significatif, un écart en pourcentage donnerait une assurance que trois
+    # relevés ne justifient pas : mieux vaut n'afficher que les prix.
+    mediane = (
+        contexte.median_price
+        if contexte.has_significant_history(settings.min_history_days)
+        else None
+    )
+
+    lignes = [
+        LigneDate(
+            observation=observation,
+            gap_vs_median=relative_gap(observation.price_cad, mediane) if mediane else None,
+            meilleur=index == 0 and len(observations) > 1,
+        )
+        for index, observation in enumerate(observations)
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "_dates.html.j2",
+        {"trajet": trajet, "lignes": lignes, "fraicheur_j": FRAICHEUR_DATES_J},
     )
 
 

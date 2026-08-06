@@ -1,0 +1,47 @@
+{% import "ui.html.j2" as ui %}
+{# Éventail des dates de départ d'un trajet, chargé à la demande.
+
+   Le balayage couvre douze mois et produit des dizaines de dates ; la carte du trajet n'en
+   montre qu'une. Ce fragment rouvre l'éventail sans quitter la page. #}
+<div class="dates" data-dates="{{ lignes | length }}" data-trajet-dates="{{ trajet.id }}">
+
+  {% if not lignes %}
+    <p class="discret" data-aucune-date>
+      Aucun relevé depuis {{ fraicheur_j }} jours pour ce trajet.
+    </p>
+  {% else %}
+    <ul class="dates-liste">
+      {% for ligne in lignes %}
+        <li class="date-ligne"{% if ligne.meilleur %} data-meilleure-date{% endif %}>
+          <span class="date-prix" data-prix="{{ ligne.observation.price_cad }}">
+            {{ ligne.observation.price_cad }} $
+          </span>
+          <span class="date-jour" data-depart="{{ ligne.observation.departure_date }}">
+            {{ ligne.observation.departure_date }}
+            {% if ligne.observation.return_date %}
+              <span class="point">→</span> {{ ligne.observation.return_date }}
+            {% endif %}
+          </span>
+          <span class="discret date-meta">
+            {{ ligne.observation.airline }}
+            <span class="point">·</span>
+            {% if ligne.observation.stops == 0 %}direct{% else %}{{ ligne.observation.stops }} escale{{ 's' if ligne.observation.stops > 1 else '' }}{% endif %}
+            <span class="point">·</span>
+            <span data-source-date="{{ ligne.observation.provider }}">{{ ligne.observation.provider }}</span>
+          </span>
+          {% if ligne.gap_vs_median is not none and ligne.gap_vs_median > 0.05 %}
+            {{ ui.badge((ligne.gap_vs_median * 100) | round | int ~ " % sous la médiane",
+                        ton="vert", crochet="ecart-date") }}
+          {% endif %}
+          {% if ligne.observation.deep_link %}
+            <a class="bouton bouton-second bouton-petit" href="{{ ligne.observation.deep_link }}"
+               target="_blank" rel="noopener noreferrer">Ouvrir ↗</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="discret dates-note">
+      Meilleur prix relevé pour chaque date de départ, sur les {{ fraicheur_j }} derniers jours.
+    </p>
+  {% endif %}
+</div>

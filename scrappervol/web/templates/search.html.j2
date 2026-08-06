@@ -53,6 +53,11 @@
           <div>
             {% if ligne.price_cad %}
               <div class="trajet-prix" data-prix="{{ ligne.price_cad }}">{{ ligne.price_cad }} $</div>
+              {% if ligne.departure_date %}
+                <div class="discret" data-depart-du-prix="{{ ligne.departure_date }}">
+                  départ le {{ ligne.departure_date }}
+                </div>
+              {% endif %}
               <div class="discret" data-provider="{{ ligne.provider }}">{{ ligne.provider }}</div>
             {% else %}
               <div class="discret" data-sans-releve>aucun relevé aujourd'hui</div>
@@ -83,6 +88,18 @@
                           stroke-linejoin="round" points="{{ ligne.points }}"></polyline>
               </svg>
             {% endif %}
+          </div>
+
+          {# Le dépliant occupe toute la largeur de la carte, sous les trois colonnes, et se
+             remplace lui-même : une fois les dates chargées, le bouton disparaît avec elles. #}
+          <div id="dates-{{ ligne.route.id }}" class="trajet-dates">
+            <button class="bouton bouton-second bouton-petit" type="button"
+                    data-voir-dates="{{ ligne.route.id }}"
+                    hx-get="/routes/{{ ligne.route.id }}/dates"
+                    hx-target="#dates-{{ ligne.route.id }}"
+                    hx-swap="innerHTML">
+              Voir les dates
+            </button>
           </div>
         </article>
       {% endfor %}

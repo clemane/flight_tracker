@@ -28,7 +28,8 @@ def _offre(price_cad: int, **surcharges) -> FlightOffer:
 
 
 def _trajet(session, **surcharges) -> Route:
-    trajet = Route(label="Paris", origins=["YUL"], destinations=["CDG"], **surcharges)
+    base = {"label": "Paris", "origins": ["YUL"], "destinations": ["CDG"]}
+    trajet = Route(**{**base, **surcharges})
     session.add(trajet)
     session.commit()
     session.refresh(trajet)
@@ -287,3 +288,138 @@ def test_la_sante_du_canal_est_creee_a_la_demande(session):
     assert sante.consecutive_failures == 0
     assert sante.last_success_at is None
     assert sante.last_failure_at is None
+
+
+class TestMeilleuresDatesDeDepart:
+    """`best_by_departure_date` rouvre l'éventail que le plus bas quotidien écrase."""
+
+    def test_retient_le_prix_plancher_de_chaque_date(self, session):
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [
+                _offre(900, depart_date=date(2027, 3, 12)),
+                _offre(612, depart_date=date(2027, 3, 12), airline="Air Canada"),
+                _offre(750, depart_date=date(2027, 4, 9)),
+            ],
+            MAINTENANT,
+        )
+
+        resultat = repo.best_by_departure_date(session, trajet.id, since=MAINTENANT)
+
+        assert [(o.departure_date, o.price_cad) for o in resultat] == [
+            (date(2027, 3, 12), 612),
+            (date(2027, 4, 9), 750),
+        ]
+
+    def test_classe_les_dates_de_la_moins_chere_a_la_plus_chere(self, session):
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [
+                _offre(prix, depart_date=date(2027, 3, jour))
+                for jour, prix in ((1, 800), (2, 520), (3, 660))
+            ],
+            MAINTENANT,
+        )
+
+        resultat = repo.best_by_departure_date(session, trajet.id, since=MAINTENANT)
+
+        assert [o.price_cad for o in resultat] == [520, 660, 800]
+
+    def test_un_releve_anterieur_a_la_fenetre_est_ignore(self, session):
+        """Un prix périmé affiché au même rang qu'un relevé du matin induirait en erreur."""
+        trajet = _trajet(session)
+        vieux = MAINTENANT - timedelta(days=30)
+        repo.record_observations(
+            session, trajet.id, [_offre(300, depart_date=date(2027, 3, 12))], vieux
+        )
+        repo.record_observations(
+            session, trajet.id, [_offre(700, depart_date=date(2027, 4, 9))], MAINTENANT
+        )
+
+        resultat = repo.best_by_departure_date(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        )
+
+        assert [o.price_cad for o in resultat] == [700]
+
+    def test_le_plancher_ecarte_ne_remonte_pas_par_la_jointure(self, session):
+        """Le relevé hors fenêtre ne doit pas non plus servir de plancher à sa propre date."""
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(300, depart_date=date(2027, 3, 12))],
+            MAINTENANT - timedelta(days=30),
+        )
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(880, depart_date=date(2027, 3, 12), airline="Air Canada")],
+            MAINTENANT,
+        )
+
+        resultat = repo.best_by_departure_date(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        )
+
+        assert [o.price_cad for o in resultat] == [880]
+
+    def test_la_limite_borne_le_nombre_de_dates(self, session):
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(500 + jour, depart_date=date(2027, 3, jour)) for jour in range(1, 21)],
+            MAINTENANT,
+        )
+
+        resultat = repo.best_by_departure_date(session, trajet.id, since=MAINTENANT, limit=5)
+
+        assert len(resultat) == 5
+        assert [o.price_cad for o in resultat] == [501, 502, 503, 504, 505]
+
+    def test_les_observations_dun_autre_trajet_restent_dehors(self, session):
+        trajet = _trajet(session)
+        autre = _trajet(session, destinations=["LIS"])
+        repo.record_observations(
+            session, trajet.id, [_offre(700, depart_date=date(2027, 3, 12))], MAINTENANT
+        )
+        repo.record_observations(
+            session, autre.id, [_offre(200, depart_date=date(2027, 3, 12))], MAINTENANT
+        )
+
+        resultat = repo.best_by_departure_date(session, trajet.id, since=MAINTENANT)
+
+        assert [o.price_cad for o in resultat] == [700]
+
+    def test_a_prix_egal_cest_le_releve_le_plus_recent_qui_sort(self, session):
+        """Deux sources peuvent toucher le même plancher : une seule ligne doit sortir."""
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(640, depart_date=date(2027, 3, 12), airline="Air Transat")],
+            MAINTENANT - timedelta(hours=5),
+        )
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(640, depart_date=date(2027, 3, 12), airline="Air Canada")],
+            MAINTENANT,
+        )
+
+        resultat = repo.best_by_departure_date(
+            session, trajet.id, since=MAINTENANT - timedelta(days=1)
+        )
+
+        assert len(resultat) == 1
+        assert resultat[0].airline == "Air Canada"
+
+    def test_sans_observation_la_vue_est_vide(self, session):
+        trajet = _trajet(session)
+
+        assert repo.best_by_departure_date(session, trajet.id, since=MAINTENANT) == []

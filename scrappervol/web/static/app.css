@@ -685,6 +685,69 @@ input::placeholder {
   color: var(--vert);
 }
 
+/* ------------------------------------------------- éventail des dates */
+
+/* Le dépliant traverse les trois colonnes de la carte : une liste de dates tassée dans la
+   colonne de droite serait illisible dès la deuxième ligne. */
+.trajet-dates {
+  grid-column: 1 / -1;
+}
+
+.dates {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bord);
+}
+
+.dates-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.date-ligne {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: var(--r-s);
+}
+
+.date-ligne:nth-child(odd) {
+  background: var(--fond-creux);
+}
+
+.date-prix {
+  min-width: 76px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-jour {
+  font-variant-numeric: tabular-nums;
+}
+
+.date-meta {
+  flex: 1;
+}
+
+/* La date la moins chère de l'éventail : c'est l'information qu'on vient chercher. */
+.date-ligne[data-meilleure-date] {
+  background: var(--vert-doux);
+}
+
+.date-ligne[data-meilleure-date] .date-prix {
+  color: var(--vert);
+}
+
+.dates-note {
+  margin: 10px 0 0;
+}
+
 /* --------------------------------------------------------------- tableaux */
 
 table {

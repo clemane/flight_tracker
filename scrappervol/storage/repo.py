@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import func
 from sqlmodel import Session, col, delete, select
 
 from scrappervol.core.types import FlightOffer
@@ -110,6 +111,53 @@ def daily_low_history(
 
 def daily_low_for(session: Session, route_id: int, day: date) -> DailyLow | None:
     return session.get(DailyLow, (route_id, day))
+
+
+def best_by_departure_date(
+    session: Session,
+    route_id: int,
+    *,
+    since: datetime,
+    limit: int = 12,
+) -> list[Observation]:
+    """Meilleure offre relevée pour chaque date de départ, la moins chère en tête.
+
+    Un balayage sur douze mois produit des dizaines de dates de départ dont les prix varient
+    du simple au double. Le plus bas quotidien les écrase en un seul chiffre : il dit combien,
+    jamais pour quand. Cette vue rouvre l'éventail.
+
+    `since` écarte les relevés périmés. Un prix vieux de trois semaines n'est plus une offre,
+    c'est un souvenir, et l'afficher au même rang qu'un relevé du matin induirait en erreur.
+    """
+    planchers = (
+        select(
+            col(Observation.departure_date).label("jour"),
+            func.min(col(Observation.price_cad)).label("plancher"),
+        )
+        .where(Observation.route_id == route_id)
+        .where(col(Observation.observed_at) >= since)
+        .group_by(col(Observation.departure_date))
+        .subquery()
+    )
+
+    lignes = session.exec(
+        select(Observation)
+        .join(
+            planchers,
+            (col(Observation.departure_date) == planchers.c.jour)
+            & (col(Observation.price_cad) == planchers.c.plancher),
+        )
+        .where(Observation.route_id == route_id)
+        .where(col(Observation.observed_at) >= since)
+        .order_by(col(Observation.price_cad), col(Observation.observed_at).desc())
+    ).all()
+
+    # Deux relevés peuvent toucher le même plancher pour une même date, sur deux sources ou
+    # à deux heures : garder le plus récent, que le tri ci-dessus a déjà placé en premier.
+    retenues: dict[date, Observation] = {}
+    for ligne in lignes:
+        retenues.setdefault(ligne.departure_date, ligne)
+    return sorted(retenues.values(), key=lambda o: o.price_cad)[:limit]
 
 
 def purge_observations(session: Session, now: datetime, retention_days: int = 90) -> int:
