@@ -6,9 +6,49 @@ import pytest
 
 from scrappervol.core.types import SearchQuery, TripType
 from scrappervol.providers.base import EmptyResultError, ProviderError
-from scrappervol.providers.google_flights import GoogleFlightsProvider, to_offers
+from scrappervol.providers.google_flights import (
+    GoogleFlightsProvider,
+    _fusionner_sections,
+    to_offers,
+)
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "google_flights_yul_cdg.json"
+SECTIONS = Path(__file__).resolve().parent.parent / "fixtures" / "google_flights_sections.json"
+
+
+def _prix(section: list) -> list[int]:
+    """Prix portés par une section de la charge utile Google."""
+    return [vol[1][0][1] for vol in section[0]]
+
+
+def test_la_fusion_retient_les_meilleurs_vols_que_la_bibliotheque_ignore():
+    """Régression : Google range les moins chers dans une section que fast-flights ne lit pas.
+
+    Sur la capture, les « meilleurs vols » s'ouvrent à 1717 $ quand les « autres » commencent à
+    2292 $. Ne lire que la seconde faisait rater l'aubaine — soit tout l'objet de cette veille.
+    """
+    payload = json.loads(SECTIONS.read_text())
+    meilleurs, autres = _prix(payload[2]), _prix(payload[3])
+    assert min(meilleurs) < min(autres), "la capture doit garder son intérêt : les bas prix en [2]"
+
+    fusionne = _fusionner_sections(payload)
+
+    assert _prix(fusionne[3]) == meilleurs + autres
+
+
+def test_la_fusion_supporte_une_charge_utile_amputee():
+    """Google peut n'en renvoyer qu'une : les vols recueillis doivent survivre au trou."""
+    payload = json.loads(SECTIONS.read_text())
+    meilleurs = _prix(payload[2])
+
+    ampute = _fusionner_sections(payload[:3])  # la section des « autres vols » manque
+
+    assert _prix(ampute[3]) == meilleurs, "les vols de la section présente doivent être conservés"
+
+
+def test_la_fusion_encaisse_une_charge_utile_vide():
+    """Aucune section exploitable : on ne lève pas, le parseur trouvera simplement zéro vol."""
+    assert _fusionner_sections([])[3] == [[]]
 
 
 def _segment(an: int, mois: int, jour: int, duree: int | None) -> dict:

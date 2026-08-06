@@ -16,6 +16,38 @@ NOM = "google_flights"
 # crédibilité de la détection qui rattrape l'ordre de grandeur aberrant.
 DEVISE = "CAD"
 
+# Google range ses résultats en deux listes distinctes dans la charge utile : les « meilleurs vols »
+# puis les « autres vols ». fast-flights ne lit que la seconde. Or les moins chers sont dans la
+# première : sur YUL→CDG, elle seule portait le vol à 1717 $, la seconde s'ouvrant à 2292 $. Ne lire
+# qu'une section revenait donc à rater exactement les offres que cette veille existe pour trouver.
+_SECTIONS = (2, 3)
+
+
+def _fusionner_sections(payload: list[Any]) -> list[Any]:
+    """Rassemble les vols de toutes les sections connues dans celle que le parseur sait lire.
+
+    Rendre le payload modifié plutôt qu'une liste de vols permet de réutiliser le parseur de la
+    bibliothèque au lieu de redire ici les indices magiques de chaque segment — c'est la partie qui
+    change le plus souvent chez Google, et celle qu'on veut le moins entretenir.
+    """
+    vols: list[Any] = []
+    for i in _SECTIONS:
+        if i >= len(payload):
+            continue
+        section = payload[i]
+        if isinstance(section, list) and section and isinstance(section[0], list):
+            vols.extend(section[0])
+
+    # Rien ne garantit que Google renvoie toujours les deux sections : on creuse la place plutôt que
+    # d'abandonner en chemin les vols déjà recueillis.
+    cible = _SECTIONS[-1]
+    while len(payload) <= cible:
+        payload.append(None)
+    if not isinstance(payload[cible], list) or not payload[cible]:
+        payload[cible] = [None]
+    payload[cible][0] = vols
+    return payload
+
 
 def _date_du_segment(segment: Mapping[str, Any]) -> date | None:
     """Date de départ réelle d'un segment, ou None si la réponse ne la porte pas.
@@ -100,7 +132,11 @@ class GoogleFlightsProvider:
 
     def _fetch(self, query: SearchQuery) -> list[Mapping[str, Any]]:
         """Appelle la bibliothèque et rend des dictionnaires bruts. Isolé pour les tests."""
-        from fast_flights import FlightQuery, Passengers, create_query, get_flights
+        import json
+
+        from fast_flights import FlightQuery, Passengers, create_query, fetch_flights_html
+        from fast_flights.parser import parse_js
+        from selectolax.lexbor import LexborHTMLParser
 
         vols = [
             FlightQuery(
@@ -126,7 +162,16 @@ class GoogleFlightsProvider:
             currency=DEVISE,
             max_stops=query.max_stops,
         )
-        return [dataclasses.asdict(vol) for vol in get_flights(requete)]
+
+        # On refait le chemin de get_flights() pour pouvoir intercaler la fusion des sections.
+        html = fetch_flights_html(requete)
+        script = LexborHTMLParser(html).css_first(r"script.ds\:1")
+        if script is None:
+            raise ProviderError(f"{NOM} : charge utile introuvable dans la page")
+        brut = script.text().split("data:", 1)[1].rsplit(",", 1)[0]
+        payload = _fusionner_sections(json.loads(brut))
+        vols = parse_js("data:" + json.dumps(payload) + ",")
+        return [dataclasses.asdict(vol) for vol in vols]
 
     def search(self, query: SearchQuery) -> list[FlightOffer]:
         try:
