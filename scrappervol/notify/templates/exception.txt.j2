@@ -1,6 +1,6 @@
 {{ data.destination }} à {{ data.price_cad }} $
 
-{{ data.label }} — {{ data.airline }} · {{ data.origin }} vers {{ data.destination }}
+{{ data.label }} — {{ data.airline }} · {{ data.origin }} vers {{ data.destination }} · {{ trajet }}
 {{ data.depart_date }}{% if data.return_date %} au {{ data.return_date }}{% endif %} · source {{ data.provider }}
 
 {{ (data.gap_vs_median * 100) | round | int }} % sous la médiane de {{ data.median_price | round | int }} $, calculée sur {{ data.history_days }} jours d'historique.

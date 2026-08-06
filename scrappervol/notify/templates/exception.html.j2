@@ -4,7 +4,7 @@
 <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; color:#222; max-width:680px;">
 <h1 style="font-size:20px;">{{ data.destination }} à {{ data.price_cad }} $</h1>
 <p style="font-size:16px;">
-  {{ data.label }} — {{ data.airline }} · {{ data.origin }} → {{ data.destination }}<br>
+  {{ data.label }} — {{ data.airline }} · {{ data.origin }} → {{ data.destination }} · {{ trajet }}<br>
   {{ data.depart_date }}{% if data.return_date %} → {{ data.return_date }}{% endif %}
   · relevé sur {{ data.provider }}
 </p>

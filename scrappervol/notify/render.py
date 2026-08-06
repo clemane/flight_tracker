@@ -25,6 +25,33 @@ class RenderedMail:
     text: str
 
 
+def format_escales(stops: int) -> str:
+    """« direct », « 1 escale », « 3 escales »."""
+    if stops <= 0:
+        return "direct"
+    return f"{stops} escale{'s' if stops > 1 else ''}"
+
+
+def format_duree(minutes: int | None) -> str:
+    """« 5 h », « 13 h 30 », ou rien du tout si la durée n'a pas été relevée."""
+    if minutes is None or minutes <= 0:
+        return ""
+    heures, reste = divmod(minutes, 60)
+    return f"{heures} h {reste:02d}" if reste else f"{heures} h"
+
+
+def format_trajet(stops: int, duration_minutes: int | None) -> str:
+    """La forme du voyage, à côté de son prix : « direct · 5 h », « 1 escale · 13 h 30 ».
+
+    Un prix seul ne dit pas ce qu'on achète. Le plus bas relevé sur une liaison peut être un vol
+    à treize heures d'escale (observé sur YUL->CUN), et une alerte qui n'annonce que le montant
+    invite à se précipiter sur un billet qu'on n'aurait pas choisi en connaissance de cause.
+    """
+    duree = format_duree(duration_minutes)
+    escales = format_escales(stops)
+    return f"{escales} · {duree}" if duree else escales
+
+
 @dataclass(frozen=True, slots=True)
 class RouteBlock:
     label: str
@@ -90,6 +117,8 @@ class ExceptionData:
     median_price: float
     gap_vs_median: float
     history_days: int
+    stops: int = 0
+    duration_minutes: int | None = None
 
 
 def render_digest(data: DigestData) -> RenderedMail:
@@ -105,8 +134,11 @@ def render_digest(data: DigestData) -> RenderedMail:
 def render_exception(data: ExceptionData) -> RenderedMail:
     ecart = round(data.gap_vs_median * 100)
     sujet = f"ScrapperVol — {data.destination} à {data.price_cad} $ ({ecart} % sous la médiane)"
+    trajet = format_trajet(data.stops, data.duration_minutes)
     return RenderedMail(
         subject=sujet,
-        html=_env.get_template("exception.html.j2").render(data=data, subject=sujet),
-        text=_env.get_template("exception.txt.j2").render(data=data, subject=sujet),
+        html=_env.get_template("exception.html.j2").render(
+            data=data, subject=sujet, trajet=trajet
+        ),
+        text=_env.get_template("exception.txt.j2").render(data=data, subject=sujet, trajet=trajet),
     )

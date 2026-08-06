@@ -1,10 +1,15 @@
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from scrappervol.notify.render import (
     DigestData,
     ExceptionData,
     ProviderStatus,
     RouteBlock,
+    format_duree,
+    format_escales,
+    format_trajet,
     render_digest,
     render_exception,
 )
@@ -330,3 +335,82 @@ def test_le_sujet_dexception_porte_la_destination_le_prix_et_lecart():
     assert "299" in rendu.html
     assert "https://example.com/offre" in rendu.html
     assert "45" in rendu.html
+
+
+@pytest.mark.parametrize(
+    ("escales", "attendu"),
+    [(0, "direct"), (1, "1 escale"), (2, "2 escales"), (3, "3 escales")],
+)
+def test_format_escales(escales: int, attendu: str) -> None:
+    assert format_escales(escales) == attendu
+
+
+@pytest.mark.parametrize(
+    ("minutes", "attendu"),
+    [
+        (300, "5 h"),
+        (810, "13 h 30"),
+        (65, "1 h 05"),
+        (60, "1 h"),
+        (None, ""),
+        (0, ""),
+    ],
+)
+def test_format_duree(minutes: int | None, attendu: str) -> None:
+    assert format_duree(minutes) == attendu
+
+
+def test_format_trajet_omet_la_duree_absente() -> None:
+    """Une durée non relevée ne doit pas laisser de séparateur orphelin dans le courriel."""
+    assert format_trajet(1, None) == "1 escale"
+    assert format_trajet(0, None) == "direct"
+    assert format_trajet(1, 810) == "1 escale · 13 h 30"
+
+
+def test_lalerte_annonce_la_forme_du_voyage_et_pas_seulement_le_prix() -> None:
+    """Sans les escales, une alerte à 541 $ peut cacher treize heures d'escale (cas YUL->CUN)."""
+    donnees = ExceptionData(
+        label="Cancún en novembre",
+        origin="YUL",
+        destination="CUN",
+        depart_date=date(2026, 11, 3),
+        return_date=date(2026, 11, 10),
+        price_cad=541,
+        airline="Air Canada Rouge",
+        provider="air_canada",
+        deep_link="https://example.com/offre",
+        median_price=620.0,
+        gap_vs_median=0.13,
+        history_days=45,
+        stops=1,
+        duration_minutes=810,
+    )
+
+    rendu = render_exception(donnees)
+
+    assert "1 escale · 13 h 30" in rendu.text
+    assert "1 escale · 13 h 30" in rendu.html
+
+
+def test_lalerte_dun_vol_direct_le_dit() -> None:
+    donnees = ExceptionData(
+        label="Cancún en novembre",
+        origin="YUL",
+        destination="CUN",
+        depart_date=date(2026, 11, 3),
+        return_date=date(2026, 11, 10),
+        price_cad=581,
+        airline="Air Canada",
+        provider="air_canada",
+        deep_link="https://example.com/offre",
+        median_price=620.0,
+        gap_vs_median=0.06,
+        history_days=45,
+        stops=0,
+        duration_minutes=300,
+    )
+
+    rendu = render_exception(donnees)
+
+    assert "direct · 5 h" in rendu.text
+    assert "escale" not in rendu.text

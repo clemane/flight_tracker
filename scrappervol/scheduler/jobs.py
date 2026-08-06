@@ -118,6 +118,8 @@ def _traiter_exception(
             median_price=mediane,
             gap_vs_median=relative_gap(observation.price_cad, mediane),
             history_days=contexte.days_of_history,
+            stops=observation.stops,
+            duration_minutes=observation.duration_minutes,
         )
     )
 
