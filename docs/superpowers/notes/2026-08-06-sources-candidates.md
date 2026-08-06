@@ -60,3 +60,46 @@ google_flights = 534 $    transat = 533 $    kayak = 498 $
 ```
 
 36 $ sous la meilleure source existante, et 2 nouveaux plus bas enregistrés dès ce passage.
+
+## Le balayage de dates, découvert dans la foulée
+
+Ajouter des sources ne suffisait pas : la veille n'interrogeait **qu'une seule date par
+trajet** (routes en politique `fixed`), et la politique `flexible` n'en sondait qu'une par mois,
+le 15. Un tarif d'erreur n'existant que certains jours, il ne pouvait pratiquement jamais être
+croisé. `calendar_window` était d'ailleurs produite par le planificateur **et lue par personne**.
+
+### Ce que Kayak accepte
+
+| Forme d'URL | Résultat |
+|---|---|
+| `/YUL-PAR/2026-11-03-flexible-3days/...` | **balaye** — 8129 résultats sur 7 journées |
+| `-flexible-5days`, `-7days`, `-10days`, `-14days` | **ignoré en silence** — 1636 résultats, une seule journée |
+| `-flexible-calendar` | ignoré, retombe sur la date fixe |
+| `/YUL-PAR/2026-11` (mois seul) | page d'erreur |
+
+**Trois jours est le maximum réel.** Au-delà, l'URL est acceptée sans erreur et la demande
+abandonnée sans que rien ne le signale : demander plus large ne coûte pas un échec, seulement une
+couverture imaginaire. C'est le piège principal de cette source.
+
+### Conséquences retenues
+
+- Le battement ne borne que la **date de départ**. `flex_days: 3` autour d'un départ le 12 mars
+  produit `(9 mars, 15 mars)` pour un voyage revenant le 22 : borner aussi le retour rejetterait
+  toutes les offres d'un tel trajet.
+- L'offre porte la **date réellement trouvée**, lue dans `legs[].departure`. Sans cela, un tarif
+  du 5 novembre serait rangé parmi ceux du 3.
+- Le planificateur sonde désormais un jalon par semaine (4, 11, 18, 25 et la queue du mois), ce
+  qui correspond à ce qu'un battement de trois jours couvre autour de chacun. Le cycle complet
+  passe de 24 à 60 passages, à plafond de requêtes inchangé.
+
+### Preuve
+
+YUL→PAR à cent jours, par le provider :
+
+```
+dates fixes   647 $ le 14 novembre   (Air Transat)
+balayage      613 $ le 15 novembre   (French Bee)
+```
+
+Et sur un passage complet après bascule des routes : 124 offres relevées contre 14, sur 16 dates
+de départ pour le seul YUL→CDG.
