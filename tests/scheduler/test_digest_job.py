@@ -551,14 +551,18 @@ class TestDatesAlternatives:
         assert bloc.autres_dates == ()
 
     def test_le_courriel_texte_affiche_les_autres_dates(self, session, reglages):
-        self._trajet_avec_releves(session, 700, [(520, date(2027, 4, 9))])
+        self._trajet_avec_releves(
+            session, 700, [(520, date(2027, 4, 9)), (880, date(2027, 5, 14))]
+        )
 
         courriel = render_digest(build_digest(session, reglages, MAINTENANT))
 
         assert "Autres dates relevées" in courriel.text
         assert "2027-04-09" in courriel.text
         assert "520 $" in courriel.text
+        # Les deux signes comptent : sans le « + », un écart de 180 $ se lit comme un prix.
         assert "-180 $" in courriel.text
+        assert "+180 $" in courriel.text
 
     def test_le_courriel_html_affiche_les_autres_dates(self, session, reglages):
         self._trajet_avec_releves(session, 700, [(880, date(2027, 5, 14))])
