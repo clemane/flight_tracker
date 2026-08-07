@@ -6,7 +6,7 @@ from scrappervol.detection.rules import (
     is_find,
     relative_gap,
 )
-from scrappervol.detection.stats import modified_z
+from scrappervol.detection.stats import median, modified_z
 
 SERIE_STABLE = [600, 605, 598, 602, 601, 599, 603, 600, 604, 597, 601, 602, 600, 599, 605, 598]
 
@@ -538,4 +538,69 @@ def test_le_critere_calendaire_voit_ce_que_le_temps_ne_voit_pas_encore():
             already_alerted=False,
         )
         is True
+    )
+
+
+def test_le_plancher_de_credibilite_calendaire_se_joue_a_legalite():
+    """Un prix exactement au plancher est refusé : la borne est inclusive. Sans cela, une
+    valeur aberrante posée pile sur le seuil de crédibilité passerait pour une aubaine."""
+    lot = [50, 700, 720, 750, 780, 800, 850, 900, 1000, 1200]
+    assert (
+        is_calendar_exception(
+            price_cad=50,
+            calendar_prices=lot,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+    # Un dollar plus bas, le plancher ne mord plus : c'est bien lui, et rien d'autre, qui
+    # retenait l'alerte.
+    assert (
+        is_calendar_exception(
+            price_cad=50,
+            calendar_prices=lot,
+            threshold=0.40,
+            credibility_floor=49,
+            already_alerted=False,
+        )
+        is True
+    )
+
+
+def test_le_seuil_relatif_calendaire_se_joue_a_legalite():
+    """Exactement quarante pour cent sous la médiane suffit : la borne est inclusive, comme
+    pour l'exception lue dans le temps."""
+    # Médiane 1000, donc seuil à 600 pile.
+    lot = [600, 950, 975, 1000, 1000, 1000, 1025, 1050, 1075, 1100]
+    assert median(lot) == 1000
+    assert (
+        is_calendar_exception(
+            price_cad=600,
+            calendar_prices=lot,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is True
+    )
+
+
+def test_un_eventail_tres_disperse_ne_declenche_pas_malgre_le_seuil_relatif():
+    """Le score z a le dernier mot. Sur un horizon dont les prix vont de 400 à 1700, un billet
+    à 400 est bien quarante pour cent sous la médiane — et pourtant parfaitement ordinaire au
+    milieu d'une telle dispersion. Sans ce veto, tout horizon étalé alerterait en permanence."""
+    lot = [400, 500, 700, 900, 1100, 1300, 1500, 1700]
+    assert relative_gap(400, median(lot)) >= 0.40
+    assert modified_z(400, lot) > SEUIL_Z_MODIFIE
+    assert (
+        is_calendar_exception(
+            price_cad=400,
+            calendar_prices=lot,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
     )

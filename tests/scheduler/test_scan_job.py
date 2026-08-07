@@ -896,6 +896,10 @@ def test_lalerte_calendaire_annonce_des_dates_et_non_des_jours_dhistorique(
     corps = faux_mailer.mails[0].text
     assert "dates de départ relevées" in corps
     assert "jours d'historique" not in corps
+    # La médiane annoncée est celle de l'éventail — [350, 720, 750, 780, 800, 850, 900, 1000,
+    # 1200] — et non celle d'un historique ici inexistant, qui vaudrait zéro et afficherait un
+    # écart de 0 % sous 0 $.
+    assert "56 % sous la médiane de 800 $" in corps
     # Neuf, et non dix : le passage relève la date de départ du trajet, qui est déjà celle du
     # premier prix du lot. Son plancher passe de 700 à 350 au lieu d'ouvrir une dixième date.
     assert "sur les 9 dates de départ" in corps
