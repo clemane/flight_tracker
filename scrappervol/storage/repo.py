@@ -113,6 +113,23 @@ def daily_low_for(session: Session, route_id: int, day: date) -> DailyLow | None
     return session.get(DailyLow, (route_id, day))
 
 
+def calendar_floor_prices(session: Session, route_id: int, *, since: datetime) -> list[int]:
+    """Prix plancher de chaque date de départ relevée depuis `since`, sans troncature.
+
+    Sert à mesurer la dispersion de l'éventail, pas à l'afficher — d'où la différence avec
+    `best_by_departure_date`, qui trie par prix et s'arrête aux premières. Ne garder que les
+    moins chères tirerait la médiane vers le bas et ferait disparaître l'aubaine dans le lot
+    qu'elle est justement censée dominer.
+    """
+    lignes = session.exec(
+        select(func.min(col(Observation.price_cad)))
+        .where(Observation.route_id == route_id)
+        .where(col(Observation.observed_at) >= since)
+        .group_by(col(Observation.departure_date))
+    ).all()
+    return [int(prix) for prix in lignes if prix is not None]
+
+
 def best_by_departure_date(
     session: Session,
     route_id: int,

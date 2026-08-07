@@ -134,6 +134,10 @@ class ExceptionData:
     history_days: int
     stops: int = 0
     duration_minutes: int | None = None
+    # Renseigné quand l'alerte vient de l'éventail des dates plutôt que de l'historique : la
+    # médiane est alors celle des dates de départ relevées, et l'annoncer comme une médiane
+    # « calculée sur N jours » serait faux. Porte à la fois l'origine du signal et son assise.
+    calendar_dates: int | None = None
 
 
 def render_digest(data: DigestData) -> RenderedMail:

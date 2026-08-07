@@ -3,7 +3,9 @@
 {{ data.label }} — {{ data.airline }} · {{ data.origin }} vers {{ data.destination }} · {{ trajet }}
 {{ data.depart_date }}{% if data.return_date %} au {{ data.return_date }}{% endif %} · source {{ data.provider }}
 
-{{ (data.gap_vs_median * 100) | round | int }} % sous la médiane de {{ data.median_price | round | int }} $, calculée sur {{ data.history_days }} jours d'historique.
+{% if data.calendar_dates %}{{ (data.gap_vs_median * 100) | round | int }} % sous la médiane de {{ data.median_price | round | int }} $, calculée sur les {{ data.calendar_dates }} dates de départ relevées pour ce trajet.
+{% else %}{{ (data.gap_vs_median * 100) | round | int }} % sous la médiane de {{ data.median_price | round | int }} $, calculée sur {{ data.history_days }} jours d'historique.
+{% endif %}
 
 {{ data.deep_link }}
 

@@ -10,7 +10,9 @@
 </p>
 <p style="background:#eafaf1;border-left:4px solid #27ae60;padding:12px;">
   {{ (data.gap_vs_median * 100) | round | int }} % sous la médiane de
-  {{ data.median_price | round | int }} $, calculée sur {{ data.history_days }} jours d'historique.
+  {{ data.median_price | round | int }} $, calculée sur
+  {% if data.calendar_dates %}les {{ data.calendar_dates }} dates de départ relevées pour ce
+  trajet.{% else %}{{ data.history_days }} jours d'historique.{% endif %}
 </p>
 <p><a href="{{ data.deep_link }}" style="font-size:16px;">Réserver</a></p>
 <p style="color:#888;font-size:12px;">Les erreurs de prix durent en général de 2 à 6 heures.</p>

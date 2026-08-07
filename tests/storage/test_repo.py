@@ -423,3 +423,87 @@ class TestMeilleuresDatesDeDepart:
         trajet = _trajet(session)
 
         assert repo.best_by_departure_date(session, trajet.id, since=MAINTENANT) == []
+
+
+class TestPlanchersDeLEventail:
+    """`calendar_floor_prices` sert à mesurer une dispersion, pas à l'afficher."""
+
+    def test_un_prix_par_date_de_depart(self, session):
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [
+                _offre(900, depart_date=date(2027, 3, 12)),
+                _offre(612, depart_date=date(2027, 3, 12), airline="Air Canada"),
+                _offre(750, depart_date=date(2027, 4, 9)),
+            ],
+            MAINTENANT,
+        )
+
+        prix = repo.calendar_floor_prices(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        )
+
+        assert sorted(prix) == [612, 750]
+
+    def test_aucune_troncature_contrairement_a_laffichage(self, session):
+        """Le point qui sépare cette lecture de `best_by_departure_date`. Ne garder que les
+        moins chères tirerait la médiane vers le bas et l'aubaine se fondrait dans le lot."""
+        trajet = _trajet(session)
+        repo.record_observations(
+            session,
+            trajet.id,
+            [
+                _offre(500 + 10 * rang, depart_date=date(2027, 3, 12) + timedelta(days=rang))
+                for rang in range(30)
+            ],
+            MAINTENANT,
+        )
+
+        prix = repo.calendar_floor_prices(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        )
+
+        assert len(prix) == 30
+        assert max(prix) == 790
+
+    def test_les_releves_perimes_sont_ecartes(self, session):
+        trajet = _trajet(session)
+        repo.record_observations(
+            session, trajet.id, [_offre(612, depart_date=date(2027, 3, 12))], MAINTENANT
+        )
+        repo.record_observations(
+            session,
+            trajet.id,
+            [_offre(300, depart_date=date(2027, 4, 9))],
+            MAINTENANT - timedelta(days=30),
+        )
+
+        prix = repo.calendar_floor_prices(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        )
+
+        assert prix == [612]
+
+    def test_un_autre_trajet_ne_pollue_pas_la_population(self, session):
+        trajet = _trajet(session)
+        autre = _trajet(session, label="Autre")
+        repo.record_observations(
+            session, trajet.id, [_offre(612, depart_date=date(2027, 3, 12))], MAINTENANT
+        )
+        repo.record_observations(
+            session, autre.id, [_offre(200, depart_date=date(2027, 5, 1))], MAINTENANT
+        )
+
+        assert repo.calendar_floor_prices(
+            session, trajet.id, since=MAINTENANT - timedelta(days=7)
+        ) == [612]
+
+    def test_aucun_releve_donne_une_population_vide(self, session):
+        trajet = _trajet(session)
+
+        assert (
+            repo.calendar_floor_prices(session, trajet.id, since=MAINTENANT - timedelta(days=7))
+            == []
+        )

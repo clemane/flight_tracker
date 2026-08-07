@@ -13,10 +13,12 @@ from scrappervol.detection.rules import (
     FRAICHEUR_RELEVE_J,
     SEUIL_SOURCE_MUETTE_H,
     PriceContext,
+    is_calendar_exception,
     is_exception,
     is_find,
     relative_gap,
 )
+from scrappervol.detection.stats import median
 from scrappervol.notify.mailer import Mailer
 from scrappervol.notify.render import (
     DateAlternative,
@@ -100,6 +102,69 @@ def run_scan(
     return resultat
 
 
+@dataclass(frozen=True, slots=True)
+class _Verdict:
+    """Ce sur quoi repose une alerte, pour que le courriel puisse le dire sans mentir."""
+
+    median_price: float
+    history_days: int
+    calendar_dates: int | None
+
+
+def _juger_exception(
+    session: Session,
+    route: Route,
+    observation: Observation,
+    settings: Settings,
+    now: datetime,
+) -> _Verdict | None:
+    """Deux lectures d'une même aubaine, essayées dans l'ordre où elles font autorité.
+
+    La comparaison dans le temps est celle du design, et reste la plus sûre : elle mesure une
+    baisse réelle. Mais elle exige deux semaines d'historique, et le balayage lui fait comparer
+    des dates de départ différentes d'un passage à l'autre — sur un horizon ouvert, ses points
+    ne mesurent plus la même chose. L'éventail des dates prend alors le relais : il se lit à
+    l'instant, sans historique, et la rotation n'a pas de prise sur lui.
+    """
+    deja = repo.exception_already_sent(session, route.id, observation.offer_hash)
+
+    historique = repo.daily_low_history(
+        session, route.id, before_day=now.date(), window_days=settings.history_window_days
+    )
+    contexte = PriceContext(daily_lows=historique)
+    if is_exception(
+        price_cad=observation.price_cad,
+        context=contexte,
+        threshold=route.exception_threshold,
+        min_history_days=settings.min_history_days,
+        credibility_floor=settings.credibility_floor_cad,
+        already_alerted=deja,
+    ):
+        return _Verdict(
+            median_price=contexte.median_price or 0.0,
+            history_days=contexte.days_of_history,
+            calendar_dates=None,
+        )
+
+    eventail = repo.calendar_floor_prices(
+        session, route.id, since=now - timedelta(days=FRAICHEUR_RELEVE_J)
+    )
+    if is_calendar_exception(
+        price_cad=observation.price_cad,
+        calendar_prices=eventail,
+        threshold=route.exception_threshold,
+        credibility_floor=settings.credibility_floor_cad,
+        already_alerted=deja,
+    ):
+        return _Verdict(
+            median_price=median(eventail),
+            history_days=contexte.days_of_history,
+            calendar_dates=len(eventail),
+        )
+
+    return None
+
+
 def _traiter_exception(
     session: Session,
     route: Route,
@@ -108,23 +173,11 @@ def _traiter_exception(
     mailer: Mailer,
     now: datetime,
 ) -> bool:
-    historique = repo.daily_low_history(
-        session, route.id, before_day=now.date(), window_days=settings.history_window_days
-    )
-    contexte = PriceContext(daily_lows=historique)
-
-    deja = repo.exception_already_sent(session, route.id, observation.offer_hash)
-    if not is_exception(
-        price_cad=observation.price_cad,
-        context=contexte,
-        threshold=route.exception_threshold,
-        min_history_days=settings.min_history_days,
-        credibility_floor=settings.credibility_floor_cad,
-        already_alerted=deja,
-    ):
+    verdict = _juger_exception(session, route, observation, settings, now)
+    if verdict is None:
         return False
 
-    mediane = contexte.median_price or 0.0
+    mediane = verdict.median_price
     courriel = render_exception(
         ExceptionData(
             label=route.label,
@@ -138,9 +191,10 @@ def _traiter_exception(
             deep_link=observation.deep_link,
             median_price=mediane,
             gap_vs_median=relative_gap(observation.price_cad, mediane),
-            history_days=contexte.days_of_history,
+            history_days=verdict.history_days,
             stops=observation.stops,
             duration_minutes=observation.duration_minutes,
+            calendar_dates=verdict.calendar_dates,
         )
     )
 

@@ -1,4 +1,12 @@
-from scrappervol.detection.rules import PriceContext, is_exception, is_find, relative_gap
+from scrappervol.detection.rules import (
+    SEUIL_Z_MODIFIE,
+    PriceContext,
+    is_calendar_exception,
+    is_exception,
+    is_find,
+    relative_gap,
+)
+from scrappervol.detection.stats import modified_z
 
 SERIE_STABLE = [600, 605, 598, 602, 601, 599, 603, 600, 604, 597, 601, 602, 600, 599, 605, 598]
 
@@ -359,3 +367,175 @@ def test_relative_gap_ne_divise_pas_par_une_mediane_nulle():
     relatif non plus."""
     assert relative_gap(500, 0.0) == 0.0
     assert relative_gap(500, -10.0) == 0.0
+
+
+# --- Exception lue dans l'éventail des dates ---------------------------------------------
+
+# Un horizon ouvert typique : les prix s'étalent du simple au double selon la saison, sans
+# qu'aucune date ne soit une aubaine. Relevé sur la route « Paris, à l aubaine » le 7 août 2026.
+EVENTAIL_ORDINAIRE = [611, 648, 671, 700, 713, 734, 765, 802, 850, 942, 1020, 1165]
+
+# Le même horizon, une aubaine en plus.
+EVENTAIL_AVEC_AUBAINE = [350, 700, 720, 750, 780, 800, 850, 900, 1000, 1200]
+
+
+def test_prix_detache_du_lot_des_dates_declenche():
+    assert (
+        is_calendar_exception(
+            price_cad=350,
+            calendar_prices=EVENTAIL_AVEC_AUBAINE,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is True
+    )
+
+
+def test_eventail_ordinaire_ne_declenche_pas():
+    """Le cas qui décide de la valeur du critère : un horizon de douze mois va naturellement
+    du simple au double, et la date la moins chère existe toujours. Crier au loup sur elle
+    reviendrait à alerter tous les jours."""
+    assert (
+        is_calendar_exception(
+            price_cad=min(EVENTAIL_ORDINAIRE),
+            calendar_prices=EVENTAIL_ORDINAIRE,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+
+
+def test_eventail_trop_etroit_ne_declenche_jamais():
+    """Sept dates : la même aubaine à 250 obtient pourtant un score de -3,7, largement sous le
+    seuil. C'est le plancher de dates, et lui seul, qui la retient."""
+    assert (
+        is_calendar_exception(
+            price_cad=250,
+            calendar_prices=[250, 700, 750, 800, 850, 900, 1000],
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+
+
+def test_huit_dates_suffisent_a_ouvrir_le_critere():
+    """Contrepartie du test précédent : la borne est inclusive, la même aubaine passe."""
+    assert (
+        is_calendar_exception(
+            price_cad=250,
+            calendar_prices=[250, 700, 750, 800, 850, 900, 1000, 1200],
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is True
+    )
+
+
+def test_dispersion_minuscule_ne_declenche_pas_malgre_un_score_extreme():
+    """Le piège du MAD sur un éventail resserré. Ces huit dates de Cancún tiennent en trente
+    dollars ; la plus basse est à six pour cent de la médiane et obtient malgré tout un score
+    de -4,9. Seul le cumul avec le seuil relatif empêche une alerte qui ne désignerait rien."""
+    resserre = [481, 501, 505, 508, 510, 510, 512, 514]
+    assert modified_z(481, resserre) <= SEUIL_Z_MODIFIE
+    assert (
+        is_calendar_exception(
+            price_cad=481,
+            calendar_prices=resserre,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+
+
+def test_mad_nul_retombe_sur_le_seuil_relatif():
+    """Six dates au même prix : la dispersion est nulle et le score indéfini. Le seuil relatif
+    tranche seul, comme il le fait déjà pour l'exception lue dans le temps."""
+    plat = [250, 500, 500, 500, 500, 500, 500, 900]
+    assert modified_z(250, plat) is None
+    assert (
+        is_calendar_exception(
+            price_cad=250,
+            calendar_prices=plat,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is True
+    )
+
+
+def test_plancher_de_credibilite_vaut_aussi_pour_le_critere_calendaire():
+    """Un aller-retour transatlantique à quarante dollars est une erreur de lecture, pas une
+    aubaine — le plancher vaut ici comme pour l'exception lue dans le temps."""
+    assert (
+        is_calendar_exception(
+            price_cad=40,
+            calendar_prices=[40, 700, 720, 750, 780, 800, 850, 900],
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+
+
+def test_une_alerte_calendaire_deja_emise_reste_silencieuse():
+    assert (
+        is_calendar_exception(
+            price_cad=350,
+            calendar_prices=EVENTAIL_AVEC_AUBAINE,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=True,
+        )
+        is False
+    )
+
+
+def test_baisse_insuffisante_dans_leventail_ne_declenche_pas():
+    # 700 est le deuxième prix de l'éventail : bas, mais pas quarante pour cent sous la médiane.
+    assert (
+        is_calendar_exception(
+            price_cad=700,
+            calendar_prices=EVENTAIL_AVEC_AUBAINE,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+
+
+def test_le_critere_calendaire_voit_ce_que_le_temps_ne_voit_pas_encore():
+    """La raison d'être du critère. Le premier jour d'un trajet, l'historique est vide et
+    l'exception lue dans le temps se tait pendant quatorze jours ; l'éventail des dates, lui,
+    est déjà lisible."""
+    assert (
+        is_exception(
+            price_cad=350,
+            context=_contexte([]),
+            threshold=0.40,
+            min_history_days=14,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is False
+    )
+    assert (
+        is_calendar_exception(
+            price_cad=350,
+            calendar_prices=EVENTAIL_AVEC_AUBAINE,
+            threshold=0.40,
+            credibility_floor=50,
+            already_alerted=False,
+        )
+        is True
+    )

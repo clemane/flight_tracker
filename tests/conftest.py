@@ -95,9 +95,15 @@ class FauxMailer:
 
     def __init__(self) -> None:
         self.envois: list[tuple[str, str]] = []
+        # `envois` ne retient que le sujet et le destinataire, ce qui suffit à la plupart des
+        # épreuves. Les courriels complets sont gardés à côté pour celles qui doivent vérifier
+        # ce que le corps affirme — un texte qui invoquerait un historique inexistant, par
+        # exemple, passerait autrement inaperçu.
+        self.mails: list = []
 
     def send(self, mail, to: str) -> None:
         self.envois.append((mail.subject, to))
+        self.mails.append(mail)
 
 
 @pytest.fixture

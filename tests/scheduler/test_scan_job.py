@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from scrappervol.config import Settings
 from scrappervol.core.types import DatePolicyKind, FlightOffer
+from scrappervol.detection.rules import FRAICHEUR_RELEVE_J
 from scrappervol.scheduler.jobs import run_scan
 from scrappervol.storage import repo
 from scrappervol.storage.models import (
@@ -815,3 +816,200 @@ def test_un_passage_sans_alerte_ne_touche_pas_la_sante_du_canal(
     )
 
     assert session.get(NotifyHealth, "email") is None
+
+
+# --- Exception lue dans l'éventail des dates ----------------------------------------------
+
+
+def _eventail(session, route_id: int, prix: list[int], *, quand=None) -> None:
+    """Pose un plancher par date de départ, une date distincte par prix.
+
+    Reproduit ce que laisse un balayage sur horizon ouvert : des dizaines de dates de départ
+    dont les prix s'étalent, et sur lesquelles se lit la dispersion.
+    """
+    instant = quand or MAINTENANT
+    for rang, montant in enumerate(prix):
+        session.add(
+            Observation(
+                route_id=route_id,
+                provider="google_flights",
+                origin="YUL",
+                destination="CDG",
+                departure_date=date(2027, 3, 12) + timedelta(days=7 * rang),
+                return_date=date(2027, 3, 22) + timedelta(days=7 * rang),
+                price_cad=montant,
+                price_original=float(montant),
+                currency_original="CAD",
+                airline="Air Transat",
+                stops=0,
+                duration_minutes=425,
+                deep_link="https://example.com",
+                observed_at=instant,
+                offer_hash=f"eventail-{route_id}-{rang}",
+            )
+        )
+    session.commit()
+
+
+# Un horizon ouvert où 350 se détache franchement du lot.
+LOT_AVEC_AUBAINE = [700, 720, 750, 780, 800, 850, 900, 1000, 1200]
+
+
+def test_une_aubaine_detachee_des_autres_dates_alerte_sans_historique(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Le gain du critère calendaire : aucun historique, et pourtant l'alerte part."""
+    trajet = _trajet(session)
+    _eventail(session, trajet.id, LOT_AVEC_AUBAINE)
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(350, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 1
+    assert len(faux_mailer.envois) == 1
+
+
+def test_lalerte_calendaire_annonce_des_dates_et_non_des_jours_dhistorique(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Sans quoi le courriel invoquerait un historique qui n'existe pas."""
+    trajet = _trajet(session)
+    _eventail(session, trajet.id, LOT_AVEC_AUBAINE)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(350, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    corps = faux_mailer.mails[0].text
+    assert "dates de départ relevées" in corps
+    assert "jours d'historique" not in corps
+    # Neuf, et non dix : le passage relève la date de départ du trajet, qui est déjà celle du
+    # premier prix du lot. Son plancher passe de 700 à 350 au lieu d'ouvrir une dixième date.
+    assert "sur les 9 dates de départ" in corps
+
+
+def test_un_eventail_ordinaire_ne_declenche_aucune_alerte(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """La date la moins chère de l'horizon existe toujours ; elle n'est pas une aubaine."""
+    trajet = _trajet(session)
+    _eventail(session, trajet.id, [648, 671, 700, 713, 734, 765, 802, 850, 942, 1020, 1165])
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(611, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 0
+    assert faux_mailer.envois == []
+
+
+def test_un_eventail_perime_ne_sert_pas_de_reference(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Des relevés vieux de plusieurs semaines ne disent plus ce que coûte un billet. S'en
+    servir comme population de comparaison ferait passer pour une aubaine un prix qui n'a
+    fait que suivre une baisse générale."""
+    trajet = _trajet(session)
+    _eventail(
+        session,
+        trajet.id,
+        LOT_AVEC_AUBAINE,
+        quand=MAINTENANT - timedelta(days=FRAICHEUR_RELEVE_J + 1),
+    )
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(350, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 0
+
+
+def test_lhistorique_garde_la_main_quand_il_est_disponible(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Les deux critères pourraient conclure ; c'est la comparaison dans le temps qui parle,
+    parce qu'elle mesure une baisse réelle plutôt qu'un écart entre destinations de saison."""
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    _eventail(session, trajet.id, LOT_AVEC_AUBAINE)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    corps = faux_mailer.mails[0].text
+    assert "30 jours d'historique" in corps
+    assert "dates de départ relevées" not in corps
+
+
+def test_un_eventail_trop_etroit_ne_declenche_pas(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Six dates : trop peu pour que la dispersion veuille dire quoi que ce soit."""
+    trajet = _trajet(session)
+    _eventail(session, trajet.id, [700, 750, 800, 850, 900, 1000])
+    dormir, _ = sans_pause
+
+    resultat = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(250, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    assert resultat.exceptions_sent == 0
+
+
+def test_une_aubaine_calendaire_deja_alertee_ne_repart_pas(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    trajet = _trajet(session)
+    _eventail(session, trajet.id, LOT_AVEC_AUBAINE)
+    dormir, _ = sans_pause
+    source = fausse_source(name="google_flights", offres=[(350, "Air Transat")])
+
+    run_scan(session, source, reglages, faux_mailer, MAINTENANT, sleeper=dormir)
+    second = run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(350, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT + timedelta(hours=4),
+        sleeper=dormir,
+    )
+
+    assert second.exceptions_sent == 0
+    assert len(faux_mailer.envois) == 1
