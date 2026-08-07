@@ -104,6 +104,17 @@ def is_history_comparable(calendar_prices: list[int]) -> bool:
     En deçà de `MIN_DATES_CALENDRIER`, la réponse est oui faute de mieux : la dispersion n'y est
     pas mesurable, et surtout le critère calendaire ne pourrait pas prendre le relais. Mieux vaut
     une comparaison imparfaite que pas de détection du tout.
+
+    Deux limites connues, laissées telles quelles :
+
+    La médiane au dénominateur plutôt que la moyenne relève de la même intention, mais sans effet
+    observable ici : sur des valeurs positives la moyenne vaut au moins la moitié de la médiane,
+    de sorte que les deux verdicts ne peuvent différer que sur une population franchement
+    bimodale — un cas que cette mesure jugerait de toute façon mal.
+
+    Car le MAD ne voit pas la bimodalité : une population dont la moitié des dates seraient à
+    moitié prix passerait pour homogène alors que sa série temporelle serait très instable. Les
+    relevés observés étalent leurs prix continûment, sans rien de tel.
     """
     if len(calendar_prices) < MIN_DATES_CALENDRIER:
         return True

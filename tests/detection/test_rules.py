@@ -660,3 +660,19 @@ def test_le_seuil_dhomogeneite_se_joue_a_legalite():
     juste_en_dessous = [841, 881, 921, 961, 1000, 1039, 1079, 1119, 1159]
     assert mad(juste_en_dessous) / median(juste_en_dessous) < SEUIL_HOMOGENEITE
     assert is_history_comparable(juste_en_dessous) is True
+
+
+def test_le_plancher_de_dates_se_joue_a_legalite():
+    """À exactement `MIN_DATES_CALENDRIER`, la dispersion doit être mesurée, pas contournée.
+    Sans ce test, rendre la comparaison inclusive laissait la suite verte tout en redonnant la
+    parole à la lecture temporelle sur un éventail manifestement étalé."""
+    huit_dates_etalees = [611, 700, 780, 850, 1050, 1150, 1300, 1425]
+    assert len(huit_dates_etalees) == MIN_DATES_CALENDRIER
+
+    assert is_history_comparable(huit_dates_etalees) is False
+
+
+def test_une_population_degeneree_ne_fait_pas_tomber_le_passage():
+    """Si un parseur se met à rendre des zéros, la détection doit se taire proprement plutôt
+    que de faire échouer le scan sur une division par zéro."""
+    assert is_history_comparable([0] * 10) is True
