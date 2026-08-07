@@ -70,11 +70,44 @@ l aubaine », aucune n'est assez détachée du lot.
 La détection ne dépend plus d'un historique de quatorze jours pour les trajets à horizon
 ouvert. Une aubaine franche relevée le premier jour est désormais visible.
 
+## Suite — la lecture temporelle perd la parole là où elle est fausse
+
+Le premier correctif avait ajouté la lecture calendaire mais laissé la lecture temporelle
+branchée partout, y compris sur les trajets où l'on venait d'établir qu'elle compare des dates
+différentes. Elle y aurait produit un faux signal dès les quatorze jours d'historique atteints.
+
+`is_history_comparable` mesure maintenant la dispersion de l'éventail et lui retire la parole
+au-delà de 8 %. Sur les relevés du jour :
+
+| Trajet | dates | dispersion | lecture |
+|---|---|---|---|
+| Cancún en novembre (fixe) | 5 | 0,8 % | temporelle |
+| YUL → CDG (fixe) | 7 | 0,5 % | temporelle |
+| Paris, à l'aubaine (flexible) | 88 | 13,8 % | coupée → éventail des dates |
+
+**Le choix de la mesure était le vrai sujet.** L'étendue paraissait l'évidence, mais elle est
+sensible aux valeurs extrêmes — c'est-à-dire à l'aubaine elle-même. Injecter une aubaine à
+moitié prix dans les relevés de Cancún fait passer son étendue de 6 % à 50 % : s'y fier aurait
+coupé la détection au moment précis où elle doit parler. Le MAD, mesuré sur les mêmes données,
+ne bouge pas (13,8 % → 13,8 % sur Paris). C'est vérifié, pas supposé.
+
+Le veto ne s'applique qu'au-dessus de huit dates, seuil à partir duquel la lecture calendaire
+peut prendre le relais : aucun trajet ne se retrouve sans détection.
+
 ## Ce qui reste ouvert
 
-La comparaison dans le temps reste branchée sur les trajets flexibles, où l'on sait maintenant
-qu'elle compare des dates différentes. Elle y est donc toujours susceptible de produire un
-faux signal une fois quatorze jours d'historique accumulés. La corriger vraiment demanderait de
-suivre le plus bas **par date de départ** plutôt que par trajet — chaque date n'étant visitée
+Le seuil de 8 % est **calibré, non dérivé** : il est posé dans l'intervalle qui sépare les
+trajets à dates fixes observés (sous 1,5 %) de l'horizon ouvert (13,8 %), et volontairement
+bas, parce que se taire à tort laisse le relais calendaire agir alors qu'alerter à tort détruit
+la confiance dans l'outil. Un trajet à horizon intermédiaire — trois ou quatre mois — tomberait
+dans une zone grise que rien n'a encore éclairée.
+
+Le MAD ne voit pas la bimodalité : un trajet dont la moitié des dates seraient à moitié prix
+passerait pour homogène alors que sa série temporelle serait très instable. Les relevés observés
+étalent leurs prix continûment, sans rien de tel, mais la limite est réelle et notée dans la
+docstring de la fonction.
+
+Enfin, la voie de fond reste non empruntée : suivre le plus bas **par date de départ** plutôt
+que par trajet donnerait une comparaison temporelle juste partout. Chaque date n'étant visitée
 que tous les dix jours environ, l'historique par date serait trop clairsemé pour une médiane, et
 il faudrait raisonner en nombre de points plutôt qu'en jours. Ce n'est pas fait.
