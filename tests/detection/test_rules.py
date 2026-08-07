@@ -1,12 +1,15 @@
 from scrappervol.detection.rules import (
+    MIN_DATES_CALENDRIER,
+    SEUIL_HOMOGENEITE,
     SEUIL_Z_MODIFIE,
     PriceContext,
     is_calendar_exception,
     is_exception,
     is_find,
+    is_history_comparable,
     relative_gap,
 )
-from scrappervol.detection.stats import median, modified_z
+from scrappervol.detection.stats import mad, median, modified_z
 
 SERIE_STABLE = [600, 605, 598, 602, 601, 599, 603, 600, 604, 597, 601, 602, 600, 599, 605, 598]
 
@@ -604,3 +607,56 @@ def test_un_eventail_tres_disperse_ne_declenche_pas_malgre_le_seuil_relatif():
         )
         is False
     )
+
+
+# --- Recevabilité de la comparaison dans le temps ------------------------------------------
+
+# Quelques dates voisines d'un même départ : les prix se tiennent.
+EVENTAIL_RESSERRE = [780, 790, 800, 800, 810, 810, 820, 830, 840]
+
+# Un horizon de douze mois : basse saison et fêtes dans la même population.
+EVENTAIL_ETALE = [611, 700, 780, 850, 950, 1050, 1150, 1300, 1425]
+
+
+def test_des_dates_qui_se_tiennent_autorisent_la_lecture_temporelle():
+    assert is_history_comparable(EVENTAIL_RESSERRE) is True
+
+
+def test_des_dates_etalees_disqualifient_la_lecture_temporelle():
+    assert is_history_comparable(EVENTAIL_ETALE) is False
+
+
+def test_une_aubaine_ne_disqualifie_pas_la_lecture_temporelle():
+    """Le point qui a dicté le choix de la mesure.
+
+    L'écart entre le plus bas et le plus haut est ici de plus de la moitié, uniquement à cause
+    de l'aubaine que l'on cherche. Une mesure sensible aux extrêmes conclurait « dates trop
+    hétérogènes » et couperait la détection au moment précis où elle doit parler.
+    """
+    avec_aubaine = [400, *EVENTAIL_RESSERRE]
+
+    etendue = (max(avec_aubaine) - min(avec_aubaine)) / max(avec_aubaine)
+    assert etendue > 0.50, "le cas doit bien être celui qui piégerait une mesure d'étendue"
+
+    assert is_history_comparable(avec_aubaine) is True
+
+
+def test_trop_peu_de_dates_laisse_la_lecture_temporelle_parler():
+    """Sous le plancher, aucun veto : le critère calendaire ne pourrait pas prendre le relais,
+    et une comparaison imparfaite vaut mieux que pas de détection du tout."""
+    maigre = [300, 600, 900, 1200, 1500, 1800, 2100]
+    assert len(maigre) < MIN_DATES_CALENDRIER
+    assert mad(maigre) / median(maigre) > 0.08, "assez dispersé pour être refusé sans le plancher"
+
+    assert is_history_comparable(maigre) is True
+
+
+def test_le_seuil_dhomogeneite_se_joue_a_legalite():
+    pile_au_seuil = [840, 880, 920, 960, 1000, 1040, 1080, 1120, 1160]
+    assert mad(pile_au_seuil) / median(pile_au_seuil) == SEUIL_HOMOGENEITE
+
+    assert is_history_comparable(pile_au_seuil) is False
+
+    juste_en_dessous = [841, 881, 921, 961, 1000, 1039, 1079, 1119, 1159]
+    assert mad(juste_en_dessous) / median(juste_en_dessous) < SEUIL_HOMOGENEITE
+    assert is_history_comparable(juste_en_dessous) is True

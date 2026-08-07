@@ -854,6 +854,10 @@ def _eventail(session, route_id: int, prix: list[int], *, quand=None) -> None:
 # Un horizon ouvert où 350 se détache franchement du lot.
 LOT_AVEC_AUBAINE = [700, 720, 750, 780, 800, 850, 900, 1000, 1200]
 
+# Un trajet à dates fixes, dont les quelques dates voisines se tiennent : la série des plus bas
+# quotidiens y compare des choses comparables, et la lecture temporelle garde donc la parole.
+LOT_RESSERRE = [780, 790, 800, 800, 810, 810, 820, 830, 840]
+
 
 def test_une_aubaine_detachee_des_autres_dates_alerte_sans_historique(
     session, reglages, fausse_source, faux_mailer, sans_pause
@@ -957,7 +961,34 @@ def test_lhistorique_garde_la_main_quand_il_est_disponible(
     session, reglages, fausse_source, faux_mailer, sans_pause
 ):
     """Les deux critères pourraient conclure ; c'est la comparaison dans le temps qui parle,
-    parce qu'elle mesure une baisse réelle plutôt qu'un écart entre destinations de saison."""
+    parce qu'elle mesure une baisse réelle plutôt qu'un écart entre destinations de saison.
+
+    Encore faut-il qu'elle soit recevable : les dates de ce trajet se tiennent, donc elle l'est.
+    """
+    trajet = _trajet(session)
+    _historique(session, trajet.id, prix=600, jours=30)
+    _eventail(session, trajet.id, LOT_RESSERRE)
+    dormir, _ = sans_pause
+
+    run_scan(
+        session,
+        fausse_source(name="google_flights", offres=[(299, "Air Transat")]),
+        reglages,
+        faux_mailer,
+        MAINTENANT,
+        sleeper=dormir,
+    )
+
+    corps = faux_mailer.mails[0].text
+    assert "30 jours d'historique" in corps
+    assert "dates de départ relevées" not in corps
+
+
+def test_lhistorique_perd_la_main_sur_un_eventail_disperse(
+    session, reglages, fausse_source, faux_mailer, sans_pause
+):
+    """Même historique irréprochable, mais des dates qui s'étalent de 700 à 1200 $ : la série des
+    plus bas quotidiens y suit la rotation plutôt que le marché. C'est l'éventail qui conclut."""
     trajet = _trajet(session)
     _historique(session, trajet.id, prix=600, jours=30)
     _eventail(session, trajet.id, LOT_AVEC_AUBAINE)
@@ -973,8 +1004,8 @@ def test_lhistorique_garde_la_main_quand_il_est_disponible(
     )
 
     corps = faux_mailer.mails[0].text
-    assert "30 jours d'historique" in corps
-    assert "dates de départ relevées" not in corps
+    assert "dates de départ relevées" in corps
+    assert "jours d'historique" not in corps
 
 
 def test_un_eventail_trop_etroit_ne_declenche_pas(

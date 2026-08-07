@@ -16,6 +16,7 @@ from scrappervol.detection.rules import (
     is_calendar_exception,
     is_exception,
     is_find,
+    is_history_comparable,
     relative_gap,
 )
 from scrappervol.detection.stats import median
@@ -120,19 +121,25 @@ def _juger_exception(
 ) -> _Verdict | None:
     """Deux lectures d'une même aubaine, essayées dans l'ordre où elles font autorité.
 
-    La comparaison dans le temps est celle du design, et reste la plus sûre : elle mesure une
-    baisse réelle. Mais elle exige deux semaines d'historique, et le balayage lui fait comparer
-    des dates de départ différentes d'un passage à l'autre — sur un horizon ouvert, ses points
-    ne mesurent plus la même chose. L'éventail des dates prend alors le relais : il se lit à
-    l'instant, sans historique, et la rotation n'a pas de prise sur lui.
+    La comparaison dans le temps est celle du design, et reste la plus sûre quand elle a droit
+    à la parole : elle mesure une baisse réelle. Mais ses points ne valent que si l'on regarde
+    chaque jour des dates comparables, ce que la rotation ne garantit plus sur un horizon
+    ouvert. L'éventail des dates prend alors le relais : il se lit à l'instant, sans historique,
+    et la rotation n'a pas de prise sur lui.
+
+    L'éventail est donc chargé d'abord, puisqu'il sert à la fois à juger de la recevabilité de
+    la première lecture et de population à la seconde.
     """
     deja = repo.exception_already_sent(session, route.id, observation.offer_hash)
+    eventail = repo.calendar_floor_prices(
+        session, route.id, since=now - timedelta(days=FRAICHEUR_RELEVE_J)
+    )
 
     historique = repo.daily_low_history(
         session, route.id, before_day=now.date(), window_days=settings.history_window_days
     )
     contexte = PriceContext(daily_lows=historique)
-    if is_exception(
+    if is_history_comparable(eventail) and is_exception(
         price_cad=observation.price_cad,
         context=contexte,
         threshold=route.exception_threshold,
@@ -146,9 +153,6 @@ def _juger_exception(
             calendar_dates=None,
         )
 
-    eventail = repo.calendar_floor_prices(
-        session, route.id, since=now - timedelta(days=FRAICHEUR_RELEVE_J)
-    )
     if is_calendar_exception(
         price_cad=observation.price_cad,
         calendar_prices=eventail,

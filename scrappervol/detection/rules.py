@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from scrappervol.detection.stats import median, modified_z
+from scrappervol.detection.stats import mad, median, modified_z
 
 SEUIL_Z_MODIFIE = -3.5
 
@@ -19,6 +19,17 @@ FRAICHEUR_RELEVE_J = 7
 # calendaire à l'écart des trajets à dates fixes, où le balayage ne couvre qu'un voisinage
 # immédiat et où la comparaison dans le temps garde tout son sens.
 MIN_DATES_CALENDRIER = 8
+
+# Au-delà de cette dispersion — écart absolu médian rapporté à la médiane — les dates d'un
+# trajet sont trop hétérogènes pour que la série des plus bas quotidiens veuille dire quelque
+# chose : la rotation change de dates à chaque passage, et le plus bas suit ce déplacement
+# plutôt que le marché.
+#
+# Calibré sur les relevés du 7 août 2026, non dérivé : les trajets à dates fixes tiennent sous
+# 1,5 %, l'horizon ouvert de douze mois est à 13,8 %. Le seuil est posé bas dans cet intervalle
+# parce que les deux erreurs ne coûtent pas la même chose — se taire à tort laisse le critère
+# calendaire prendre le relais, alerter à tort détruit la confiance dans l'outil.
+SEUIL_HOMOGENEITE = 0.08
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +86,32 @@ def is_exception(
     if score is None:
         return True
     return score <= SEUIL_Z_MODIFIE
+
+
+def is_history_comparable(calendar_prices: list[int]) -> bool:
+    """La série des plus bas quotidiens mesure-t-elle encore la même chose d'un jour à l'autre ?
+
+    Elle ne le fait que si les dates couvertes sont assez homogènes. Sur un horizon ouvert, la
+    rotation en balaie des différentes à chaque passage, et le plus bas bascule selon qu'elle
+    tombe sur la basse saison ou sur Noël — un mouvement qui n'a rien à voir avec le marché.
+
+    La dispersion se mesure ici par l'écart absolu médian, et non par l'étendue, parce qu'une
+    aubaine creuse mécaniquement l'écart entre le plus bas et le plus haut. Sur les données du
+    7 août 2026, injecter une aubaine à moitié prix fait passer l'étendue d'un trajet à dates
+    fixes de 6 % à 50 % : s'y fier reviendrait à couper la détection au moment précis où elle
+    doit parler. Le MAD, lui, ne bouge pas.
+
+    En deçà de `MIN_DATES_CALENDRIER`, la réponse est oui faute de mieux : la dispersion n'y est
+    pas mesurable, et surtout le critère calendaire ne pourrait pas prendre le relais. Mieux vaut
+    une comparaison imparfaite que pas de détection du tout.
+    """
+    if len(calendar_prices) < MIN_DATES_CALENDRIER:
+        return True
+
+    centre = median(calendar_prices)
+    if centre <= 0:
+        return True
+    return mad(calendar_prices) / centre < SEUIL_HOMOGENEITE
 
 
 def is_calendar_exception(
