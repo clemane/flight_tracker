@@ -17,6 +17,8 @@ pour élargir la couverture.
 | Hopper | 200 + DataDome | — | non |
 | Air France, British Airways | délai dépassé | — | non |
 | PLAY | domaine non résolu | — | non |
+| **Skiplagged** | 200, API JSON ouverte, 300 itinéraires | non nécessaire | non — **sert en USD**, voir ci-dessous |
+| Trip.com | 200 mais « Challenge Validation » | — | non — bloqué |
 
 ## Pourquoi Kayak plutôt qu'une série de scrapers d'agences
 
@@ -144,3 +146,64 @@ processus du cycle précédent n'a survécu, ces fichiers ne peuvent qu'être or
 
 Rappel qui découle du même mécanisme : `docker-entrypoint.sh` est copié dans l'image, non monté.
 Le modifier exige `./dev build`, sinon le conteneur continue d'exécuter l'ancien.
+
+## Skiplagged : accessible, mais dans la mauvaise devise — 7 août 2026
+
+Skiplagged était le dernier candidat non testé, et le plus tentant : c'est l'outil de référence
+des chasseurs de tarifs anormaux, ce qui est précisément l'objet de ce logiciel.
+
+### Ce qui fonctionne
+
+`GET https://skiplagged.com/api/search.php` répond **200 sans aucun marqueur anti-robot**, en
+requête directe, sans navigateur :
+
+```
+from=YUL&to=PAR&depart=2026-11-03&return=2026-11-10&format=v3&counts[adults]=1
+```
+
+Le document fait environ 200 Ko et porte :
+
+| Clé | Contenu |
+|---|---|
+| `itineraries.outbound` / `.inbound` | 300 itinéraires chacun |
+| `flights` | 600 vols, avec segments, horaires et durée |
+| `airlines`, `cities`, `airports` | tables de correspondance |
+
+Les prix sont **en centièmes** : `min_round_trip_price: 53700` vaut 537,00. Chaque itinéraire
+nomme aussi son agence d'origine dans `data`, et **Skyscanner y figure** — la source bloquée en
+direct est donc accessible par ricochet.
+
+Aucun tarif « hidden city » n'apparaît dans cette réponse : `search.php` ne sert que des
+itinéraires complets. La spécialité du site passe par un autre chemin, non exploré.
+
+### Ce qui bloque : la devise
+
+Aucun paramètre ne change les prix. `currency=CAD`, `curr=CAD`, `locale=en_CA` et même
+`currency=EUR` renvoient tous exactement `53700`.
+
+Recoupement avec les observations déjà en base, sur la date la mieux couverte (2026-12-21,
+17 relevés en CAD) :
+
+| | minimum | médiane |
+|---|---|---|
+| CAD déjà collecté | 1093 | 1675 |
+| Skiplagged | 820 | 1301 |
+| **rapport** | **1,333** | **1,287** |
+
+Un rapport de 1,29 à 1,33 est incompatible avec des prix déjà en CAD, qui donneraient ≈ 1,00.
+La source sert en dollars américains, sans possibilité de demander autre chose.
+
+### Pourquoi ce n'est pas intégré
+
+Le design impose la normalisation en CAD (§ Devise). L'intégrer supposerait donc un taux de
+change obtenu d'un tiers — la Banque du Canada en publie un, stable et sans clé. Mais cela
+ajouterait une dépendance réseau dont la panne ou la dérive **ne se verrait pas** : les prix
+continueraient d'arriver, simplement faux, et un taux dérivé de 15 % fabriquerait des aubaines
+qui n'existent pas. C'est exactement le risque que le design nomme comme principal.
+
+Ce coût serait acceptable pour une source unique. Il ne l'est pas pour une cinquième source qui
+agrège les mêmes agences que Kayak, déjà en place et déjà en CAD natif.
+
+**À rouvrir si** l'une des quatre sources tombe durablement, ou si un besoin apparaît pour les
+tarifs « hidden city » — auquel cas la question de la devise devra être tranchée d'abord, et le
+taux surveillé comme le canal courriel l'est aujourd'hui.
